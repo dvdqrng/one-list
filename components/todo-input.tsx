@@ -84,9 +84,11 @@ export function TodoInput({ existingTodos, onAddTodos, onUpdateTodo, isProcessin
 
     try {
       const result = await processTodoText(input, existingTodos)
+      console.log("[v0] Processing result:", result)
 
       // Handle new todos
       if (result.newTodos.length > 0) {
+        console.log("[v0] Adding new todos:", result.newTodos)
         onAddTodos(result.newTodos)
       }
 

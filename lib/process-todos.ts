@@ -1,6 +1,7 @@
 "use server"
 
 import { generateObject } from "ai"
+import { openai } from "@ai-sdk/openai"
 import { z } from "zod"
 import type { Todo, ProcessResult } from "./types"
 
@@ -28,7 +29,7 @@ const ProcessResultSchema = z.object({
 
 export async function processTodoText(input: string, existingTodos: Todo[]): Promise<ProcessResult> {
   const { object } = await generateObject({
-    model: "openai/gpt-4o-mini",
+    model: openai("gpt-4o-mini"),
     schema: ProcessResultSchema,
     prompt: `You are a smart todo assistant. Analyze the user's input and determine if they want to:
 1. Create new tasks
@@ -39,16 +40,17 @@ IMPORTANT: Extract a clean, concise one-line title (e.g., "Buy milk", "Call dent
 
 User input: "${input}"
 
-Existing todos:
-${existingTodos.map((t, i) => `${i + 1}. [ID: ${t.id}] ${t.title}${t.completed ? " ✓ COMPLETED" : " ○ INCOMPLETE"}${t.priority ? ` (${t.priority} priority)` : ""}${t.dueDate ? ` (due: ${new Date(t.dueDate).toLocaleDateString()})` : ""}${t.category ? ` [${t.category}]` : ""}${t.details ? ` - Details: ${t.details}` : ""}`).join("\n")}
+Existing todos (${existingTodos.length} total):
+${existingTodos.length === 0 ? "(No existing tasks - you must create new tasks)" : existingTodos.map((t, i) => `${i + 1}. [ID: ${t.id}] ${t.title}${t.completed ? " ✓ COMPLETED" : " ○ INCOMPLETE"}${t.priority ? ` (${t.priority} priority)` : ""}${t.dueDate ? ` (due: ${new Date(t.dueDate).toLocaleDateString()})` : ""}${t.category ? ` [${t.category}]` : ""}${t.details ? ` - Details: ${t.details}` : ""}`).join("\n")}
 
 Smart Matching Rules:
+- If there are NO existing tasks, you MUST create new tasks, not updates
+- Only try to match/update if the user explicitly says "update", "change", "modify", "mark as done", "complete", "finish" AND there are existing tasks
 - Match semantically similar tasks (e.g., "grocery shopping" = "buy groceries" = "get food")
 - Match by category when mentioned (e.g., "update my work task" matches tasks with category "work")
 - Match by priority when specified (e.g., "mark urgent task as done" matches high priority tasks)
 - Match by due date proximity (e.g., "tomorrow's task" matches tasks due tomorrow)
-- If user says "update", "change", "modify", "mark as done", "complete", "finish", always try to match existing tasks
-- Only create new tasks if no reasonable match exists or user explicitly says "add" or "create"
+- Default to creating new tasks unless user clearly wants to update existing ones
 - Be flexible with wording variations (e.g., "finish" = "complete" = "mark done" = "check off")
 - When marking as complete, set completed: true in updates
 
