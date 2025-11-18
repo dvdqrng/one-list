@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useRef, useEffect } from "react"
-import { X, Loader2 } from "lucide-react"
+import { X, Loader2, Calendar } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -74,14 +74,7 @@ export function TodoRow({
   }
 
   const getPriorityColor = (priority: "low" | "medium" | "high") => {
-    switch (priority) {
-      case "high":
-        return "destructive"
-      case "medium":
-        return "default"
-      case "low":
-        return "secondary"
-    }
+    return "secondary"
   }
 
   return (
@@ -131,12 +124,13 @@ export function TodoRow({
             </Badge>
           )}
           {metadata.dueDate && (
-            <Badge variant="outline">
-              📅 {formatDueDate(metadata.dueDate)}
+            <Badge variant="secondary" className="gap-1">
+              <Calendar className="h-3 w-3" />
+              {formatDueDate(metadata.dueDate)}
             </Badge>
           )}
           {metadata.category && (
-            <Badge variant="outline">
+            <Badge variant="secondary">
               {metadata.category}
             </Badge>
           )}

@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import { Calendar } from "lucide-react"
 import {
   Dialog,
   DialogContent,
@@ -120,17 +121,18 @@ export function MergeDialog({ open, onOpenChange, groups, todos, onMerge }: Merg
                           )}
                           <div className="mt-2 flex gap-2">
                             {task.priority && (
-                              <Badge variant="outline">
+                              <Badge variant="secondary">
                                 {task.priority}
                               </Badge>
                             )}
                             {task.dueDate && (
-                              <Badge variant="outline">
-                                📅 {formatDueDate(task.dueDate)}
+                              <Badge variant="secondary" className="gap-1">
+                                <Calendar className="h-3 w-3" />
+                                {formatDueDate(task.dueDate)}
                               </Badge>
                             )}
                             {task.category && (
-                              <Badge variant="outline">
+                              <Badge variant="secondary">
                                 {task.category}
                               </Badge>
                             )}
@@ -149,17 +151,18 @@ export function MergeDialog({ open, onOpenChange, groups, todos, onMerge }: Merg
                       )}
                       <div className="flex gap-2">
                         {group.suggestedMerge.priority && (
-                          <Badge variant="outline">
+                          <Badge variant="secondary">
                             {group.suggestedMerge.priority}
                           </Badge>
                         )}
                         {group.suggestedMerge.dueDate && (
-                          <Badge variant="outline">
-                            📅 {formatDueDate(group.suggestedMerge.dueDate)}
+                          <Badge variant="secondary" className="gap-1">
+                            <Calendar className="h-3 w-3" />
+                            {formatDueDate(group.suggestedMerge.dueDate)}
                           </Badge>
                         )}
                         {group.suggestedMerge.category && (
-                          <Badge variant="outline">
+                          <Badge variant="secondary">
                             {group.suggestedMerge.category}
                           </Badge>
                         )}

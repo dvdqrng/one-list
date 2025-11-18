@@ -83,13 +83,21 @@ export function TodoInput({ existingTodos, onAddTodos, onUpdateTodo, isProcessin
     setFeedback({ message: "", type: "success" })
 
     try {
+      // Note: For bulk processing via TodoInput, we still call the AI immediately
+      // because it analyzes the whole input and determines new todos vs updates
+      // This is different from TodoListInput which creates individual todos
       const result = await processTodoText(input, existingTodos)
       console.log("[v0] Processing result:", result)
 
-      // Handle new todos
+      // Handle new todos - these come from AI already processed
       if (result.newTodos.length > 0) {
         console.log("[v0] Adding new todos:", result.newTodos)
-        onAddTodos(result.newTodos)
+        // Mark them as already enhanced since they came from AI
+        const enhancedTodos = result.newTodos.map(todo => ({
+          ...todo,
+          aiProcessingStatus: "enhanced" as const,
+        }))
+        onAddTodos(enhancedTodos)
       }
 
       // Handle updates with completion status

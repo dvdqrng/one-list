@@ -28,6 +28,8 @@ const ProcessResultSchema = z.object({
 })
 
 export async function processTodoText(input: string, existingTodos: Todo[]): Promise<ProcessResult> {
+  const todayDate = new Date().toISOString().split("T")[0]
+
   const timeoutPromise = new Promise<never>((_, reject) => {
     setTimeout(() => reject(new Error("Request timed out after 30 seconds")), 30000)
   })
@@ -41,6 +43,10 @@ export async function processTodoText(input: string, existingTodos: Todo[]): Pro
 3. Mark tasks as complete/incomplete
 
 IMPORTANT: Extract a clean, concise one-line title (e.g., "Buy milk", "Call dentist") and put ALL other details, context, and notes in the details field.
+
+DEFAULT VALUES (use these when no specific information is provided):
+- If NO priority is mentioned or inferred → set priority to "low"
+- If NO due date is mentioned or inferred → set dueDate to today (${todayDate})
 
 User input: "${input}"
 
@@ -68,11 +74,13 @@ Date Parsing Examples:
 - "in 3 days" = 3 days from now
 - "Monday" = next Monday
 - "end of month" = last day of current month
+- Today's date: ${todayDate}
 
 Priority Detection:
 - "urgent", "important", "asap", "critical" = high priority
-- "medium", "normal" = medium priority  
+- "medium", "normal" = medium priority
 - "low", "whenever", "someday" = low priority
+- If NOTHING mentioned → default to "low"
 
 Return the appropriate new todos and/or updates with clear reasoning.`,
   })
@@ -84,8 +92,8 @@ Return the appropriate new todos and/or updates with clear reasoning.`,
     title: todo.title,
     details: todo.details,
     completed: false,
-    priority: todo.priority,
-    dueDate: todo.dueDate,
+    priority: todo.priority || "low", // Default to low if not provided
+    dueDate: todo.dueDate || todayDate, // Default to today if not provided
     category: todo.category,
     createdAt: new Date().toISOString(),
   }))

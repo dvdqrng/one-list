@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useEffect } from "react"
 import { TodoRow } from "@/components/todo-row"
-import { processSingleTodo } from "@/lib/process-single-todo"
+import { aiQueueManager } from "@/lib/ai-queue-manager"
 import type { Todo } from "@/lib/types"
 
 interface TodoListInputProps {
@@ -24,8 +24,6 @@ export function TodoListInput({
   onSelectTodo,
   selectedTodoId,
 }: TodoListInputProps) {
-  // Track which todos are being processed
-  const [processingIds, setProcessingIds] = useState<Set<string>>(new Set())
   // Track draft (new, unprocessed) rows
   const [draftRow, setDraftRow] = useState({ id: crypto.randomUUID(), value: "" })
 
@@ -33,27 +31,29 @@ export function TodoListInput({
     async (id: string, value: string) => {
       if (!value.trim()) return
 
-      setProcessingIds((prev) => new Set(prev).add(id))
-
-      try {
-        const result = await processSingleTodo(value, todos)
-
-        if (result.todo) {
-          onAddTodo(result.todo)
-          // Clear draft row after successful processing
-          setDraftRow({ id: crypto.randomUUID(), value: "" })
-        }
-      } catch (error) {
-        console.error("Error processing todo:", error)
-      } finally {
-        setProcessingIds((prev) => {
-          const next = new Set(prev)
-          next.delete(id)
-          return next
-        })
+      // Create todo immediately without AI processing
+      const newTodo: Todo = {
+        id: crypto.randomUUID(),
+        title: value, // Use raw input as title initially
+        completed: false,
+        createdAt: new Date().toISOString(),
+        aiProcessingStatus: "pending",
       }
+
+      // Add the todo immediately
+      onAddTodo(newTodo)
+
+      // Clear draft row
+      setDraftRow({ id: crypto.randomUUID(), value: "" })
+
+      // Enqueue for AI enhancement
+      aiQueueManager.enqueue({
+        todoId: newTodo.id,
+        inputText: value,
+        type: "enhance",
+      })
     },
-    [todos, onAddTodo]
+    [onAddTodo]
   )
 
   const handleDraftChange = (newValue: string) => {
@@ -109,7 +109,7 @@ export function TodoListInput({
           onDelete={() => handleTodoDelete(todo.id)}
           onEnter={() => handleTodoEnter(todo.id)}
           onBackspaceEmpty={() => handleTodoBackspaceEmpty(todo.id)}
-          isProcessing={processingIds.has(todo.id)}
+          isProcessing={todo.aiProcessingStatus === "processing" || todo.aiProcessingStatus === "pending"}
           metadata={{
             priority: todo.priority,
             dueDate: todo.dueDate,
@@ -130,7 +130,7 @@ export function TodoListInput({
         onDelete={handleDraftDelete}
         onEnter={handleDraftEnter}
         onBackspaceEmpty={handleDraftBackspaceEmpty}
-        isProcessing={processingIds.has(draftRow.id)}
+        isProcessing={false}
         autoFocus={todos.length === 0}
       />
     </div>

@@ -11,9 +11,11 @@ import { cn } from "@/lib/utils"
 interface TodoSidebarProps {
   selectedTodo: Todo | undefined
   onUpdate: (id: string, updates: Partial<Todo>) => void
+  showAiInput: boolean
+  aiInputSection: React.ReactNode
 }
 
-export function TodoSidebar({ selectedTodo }: TodoSidebarProps) {
+export function TodoSidebar({ selectedTodo, showAiInput, aiInputSection }: TodoSidebarProps) {
   const [isCollapsed, setIsCollapsed] = useState(false)
 
   if (isCollapsed) {
@@ -34,8 +36,8 @@ export function TodoSidebar({ selectedTodo }: TodoSidebarProps) {
 
   if (!selectedTodo) {
     return (
-      <div className="w-80 shrink-0 border-l bg-muted/30 overflow-auto">
-        <div className="px-6 pt-4 pb-6 md:pt-8 h-full flex flex-col">
+      <div className="w-80 shrink-0 border-l bg-muted/30 overflow-auto flex flex-col">
+        <div className="flex-1 px-6 pt-4 pb-6 md:pt-8 flex flex-col">
           <div className="flex items-center justify-between mb-6">
             <h3 className="text-sm font-medium">Task Details</h3>
             <Button
@@ -58,13 +60,18 @@ export function TodoSidebar({ selectedTodo }: TodoSidebarProps) {
             </div>
           </div>
         </div>
+        {showAiInput && (
+          <div className="border-t">
+            {aiInputSection}
+          </div>
+        )}
       </div>
     )
   }
 
   return (
-    <div className="w-80 shrink-0 border-l bg-muted/30 overflow-auto">
-      <div className="px-6 pt-4 pb-6 md:pt-8">
+    <div className="w-80 shrink-0 border-l bg-muted/30 overflow-auto flex flex-col">
+      <div className="flex-1 px-6 pt-4 pb-6 md:pt-8">
         <div className="flex items-center justify-between mb-6">
           <h3 className="text-sm font-medium">Task Details</h3>
           <Button
@@ -95,16 +102,7 @@ export function TodoSidebar({ selectedTodo }: TodoSidebarProps) {
             {selectedTodo.priority && (
               <div>
                 <p className="text-sm text-muted-foreground mb-2">Priority</p>
-                <Badge
-                  variant={
-                    selectedTodo.priority === "high"
-                      ? "destructive"
-                      : selectedTodo.priority === "medium"
-                        ? "default"
-                        : "secondary"
-                  }
-                  className="text-sm"
-                >
+                <Badge variant="secondary" className="text-sm">
                   {selectedTodo.priority}
                 </Badge>
               </div>
@@ -113,7 +111,7 @@ export function TodoSidebar({ selectedTodo }: TodoSidebarProps) {
             {selectedTodo.dueDate && (
               <div>
                 <p className="text-sm text-muted-foreground mb-2">Due Date</p>
-                <Badge variant="outline" className="text-sm gap-1.5">
+                <Badge variant="secondary" className="text-sm gap-1.5">
                   <Calendar className="h-4 w-4" />
                   {new Date(selectedTodo.dueDate).toLocaleDateString()}
                 </Badge>
@@ -123,7 +121,7 @@ export function TodoSidebar({ selectedTodo }: TodoSidebarProps) {
             {selectedTodo.category && (
               <div>
                 <p className="text-sm text-muted-foreground mb-2">Category</p>
-                <Badge variant="outline" className="text-sm gap-1.5">
+                <Badge variant="secondary" className="text-sm gap-1.5">
                   <Tag className="h-4 w-4" />
                   {selectedTodo.category}
                 </Badge>
@@ -139,6 +137,11 @@ export function TodoSidebar({ selectedTodo }: TodoSidebarProps) {
           </div>
         </div>
       </div>
+      {showAiInput && (
+        <div className="border-t">
+          {aiInputSection}
+        </div>
+      )}
     </div>
   )
 }
