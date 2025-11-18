@@ -7,6 +7,8 @@ import { MergeButton } from "./merge-button"
 import { MergeDialog } from "./merge-dialog"
 import { TodoList } from "./todo-list"
 import { TodoSidebar } from "./todo-sidebar"
+import { Button } from "./ui/button"
+import { Tag } from "lucide-react"
 import type { Todo } from "@/lib/types"
 import type { SimilarTaskGroup } from "@/lib/find-similar-tasks"
 
@@ -16,6 +18,7 @@ export function TodoApp() {
   const [selectedTodoId, setSelectedTodoId] = useState<string | null>(null)
   const [mergeGroups, setMergeGroups] = useState<SimilarTaskGroup[]>([])
   const [showMergeDialog, setShowMergeDialog] = useState(false)
+  const [showMetadata, setShowMetadata] = useState(true)
 
   const handleAddTodo = (todo: Todo) => {
     setTodos((prev) => [...prev, todo])
@@ -81,12 +84,22 @@ export function TodoApp() {
           <div className="mx-auto max-w-4xl p-4 md:p-8">
             <div className="mb-6 flex items-center justify-between">
               <div>
-                <h1 className="text-4xl font-bold tracking-tight text-balance mb-2">Intelligent Todo</h1>
-                <p className="text-muted-foreground text-pretty">
+                <h1 className="text-sm font-medium mb-2">Notes List</h1>
+                <p className="text-sm text-muted-foreground">
                   Write naturally. Tasks appear automatically as you pause.
                 </p>
               </div>
-              <MergeButton todos={todos} onMergeGroupsFound={handleMergeGroupsFound} />
+              <div className="flex items-center gap-2">
+                <Button
+                  variant={showMetadata ? "default" : "outline"}
+                  size="icon"
+                  onClick={() => setShowMetadata(!showMetadata)}
+                  title={showMetadata ? "Hide metadata" : "Show metadata"}
+                >
+                  <Tag className="h-4 w-4" />
+                </Button>
+                <MergeButton todos={todos} onMergeGroupsFound={handleMergeGroupsFound} />
+              </div>
             </div>
 
             <TodoTextEditor
@@ -97,6 +110,7 @@ export function TodoApp() {
               onToggleTodo={handleToggleTodo}
               onSelectTodo={handleSelectTodo}
               selectedTodoId={selectedTodoId}
+              showMetadata={showMetadata}
             />
           </div>
         </div>

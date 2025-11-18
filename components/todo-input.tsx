@@ -194,7 +194,7 @@ export function TodoInput({ existingTodos, onAddTodos, onUpdateTodo, isProcessin
                 feedback.type === "success"
                   ? "text-primary font-medium flex items-center gap-1"
                   : feedback.type === "timeout"
-                    ? "text-orange-500 font-medium flex items-center gap-1"
+                    ? "text-warning font-medium flex items-center gap-1"
                     : "text-destructive font-medium flex items-center gap-1"
               }
             >

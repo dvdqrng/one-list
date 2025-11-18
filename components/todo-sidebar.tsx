@@ -18,12 +18,13 @@ export function TodoSidebar({ selectedTodo }: TodoSidebarProps) {
 
   if (isCollapsed) {
     return (
-      <div className="shrink-0 border-l bg-muted/30 flex items-start justify-center pt-4">
+      <div className="w-12 shrink-0 border-l bg-muted/30 flex items-start justify-center pt-4 md:pt-8 px-1.5">
         <Button
           variant="ghost"
           size="icon"
           onClick={() => setIsCollapsed(false)}
           title="Expand sidebar"
+          className="h-8 w-8"
         >
           <ChevronLeft className="h-4 w-4" />
         </Button>
@@ -34,14 +35,14 @@ export function TodoSidebar({ selectedTodo }: TodoSidebarProps) {
   if (!selectedTodo) {
     return (
       <div className="w-80 shrink-0 border-l bg-muted/30 overflow-auto">
-        <div className="p-6 h-full flex flex-col">
+        <div className="px-6 pt-4 pb-6 md:pt-8 h-full flex flex-col">
           <div className="flex items-center justify-between mb-6">
-            <h3 className="text-sm font-semibold">Task Details</h3>
+            <h3 className="text-sm font-medium">Task Details</h3>
             <Button
               variant="ghost"
               size="icon"
               onClick={() => setIsCollapsed(true)}
-              className="h-8 w-8"
+              className="h-8 w-8 -mr-2"
               title="Collapse sidebar"
             >
               <ChevronRight className="h-4 w-4" />
@@ -52,7 +53,7 @@ export function TodoSidebar({ selectedTodo }: TodoSidebarProps) {
               <AlertCircle className="h-8 w-8 text-muted-foreground" />
             </div>
             <div>
-              <h3 className="font-semibold mb-1">No task selected</h3>
+              <h3 className="text-sm font-medium mb-1">No task selected</h3>
               <p className="text-sm text-muted-foreground">Click on a task to view details</p>
             </div>
           </div>
@@ -63,14 +64,14 @@ export function TodoSidebar({ selectedTodo }: TodoSidebarProps) {
 
   return (
     <div className="w-80 shrink-0 border-l bg-muted/30 overflow-auto">
-      <div className="p-6">
+      <div className="px-6 pt-4 pb-6 md:pt-8">
         <div className="flex items-center justify-between mb-6">
-          <h3 className="text-sm font-semibold">Task Details</h3>
+          <h3 className="text-sm font-medium">Task Details</h3>
           <Button
             variant="ghost"
             size="icon"
             onClick={() => setIsCollapsed(true)}
-            className="h-8 w-8"
+            className="h-8 w-8 -mr-2"
             title="Collapse sidebar"
           >
             <ChevronRight className="h-4 w-4" />
@@ -78,14 +79,14 @@ export function TodoSidebar({ selectedTodo }: TodoSidebarProps) {
         </div>
         <div className="space-y-6">
           <div>
-            <h2 className={cn("text-xl font-semibold", selectedTodo.completed && "line-through text-muted-foreground")}>
+            <h2 className={cn("text-sm font-medium", selectedTodo.completed && "line-through text-muted-foreground")}>
               {selectedTodo.title}
             </h2>
           </div>
 
           {selectedTodo.details && (
             <div>
-              <p className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wide">Description</p>
+              <p className="text-sm text-muted-foreground mb-2">Description</p>
               <p className="text-sm leading-relaxed">{selectedTodo.details}</p>
             </div>
           )}
@@ -93,7 +94,7 @@ export function TodoSidebar({ selectedTodo }: TodoSidebarProps) {
           <div className="space-y-4 pt-4 border-t">
             {selectedTodo.priority && (
               <div>
-                <p className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wide">Priority</p>
+                <p className="text-sm text-muted-foreground mb-2">Priority</p>
                 <Badge
                   variant={
                     selectedTodo.priority === "high"
@@ -111,7 +112,7 @@ export function TodoSidebar({ selectedTodo }: TodoSidebarProps) {
 
             {selectedTodo.dueDate && (
               <div>
-                <p className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wide">Due Date</p>
+                <p className="text-sm text-muted-foreground mb-2">Due Date</p>
                 <Badge variant="outline" className="text-sm gap-1.5">
                   <Calendar className="h-4 w-4" />
                   {new Date(selectedTodo.dueDate).toLocaleDateString()}
@@ -121,7 +122,7 @@ export function TodoSidebar({ selectedTodo }: TodoSidebarProps) {
 
             {selectedTodo.category && (
               <div>
-                <p className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wide">Category</p>
+                <p className="text-sm text-muted-foreground mb-2">Category</p>
                 <Badge variant="outline" className="text-sm gap-1.5">
                   <Tag className="h-4 w-4" />
                   {selectedTodo.category}
@@ -130,7 +131,7 @@ export function TodoSidebar({ selectedTodo }: TodoSidebarProps) {
             )}
 
             <div>
-              <p className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wide">Status</p>
+              <p className="text-sm text-muted-foreground mb-2">Status</p>
               <Badge variant={selectedTodo.completed ? "default" : "secondary"} className="text-sm">
                 {selectedTodo.completed ? "Completed" : "Active"}
               </Badge>

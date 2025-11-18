@@ -28,7 +28,7 @@ export function TodoList({ todos, onToggle, onDelete, onSelect, selectedTodoId }
             <AlertCircle className="h-6 w-6 text-muted-foreground" />
           </div>
           <div>
-            <h3 className="font-semibold mb-1">No tasks yet</h3>
+            <h3 className="text-sm font-medium mb-1">No tasks yet</h3>
             <p className="text-sm text-muted-foreground">Add your first task using natural language above</p>
           </div>
         </div>
@@ -107,7 +107,7 @@ function TodoItem({
         <div className="flex-1 min-w-0">
           <p
             className={cn(
-              "font-medium leading-relaxed",
+              "text-sm leading-relaxed",
               todo.completed && "line-through text-muted-foreground",
             )}
           >

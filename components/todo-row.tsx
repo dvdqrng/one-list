@@ -126,17 +126,17 @@ export function TodoRow({
       {!isProcessing && metadata && (
         <div className="flex items-center gap-1">
           {metadata.priority && (
-            <Badge variant={getPriorityColor(metadata.priority)} className="text-xs">
+            <Badge variant={getPriorityColor(metadata.priority)}>
               {metadata.priority}
             </Badge>
           )}
           {metadata.dueDate && (
-            <Badge variant="outline" className="text-xs">
+            <Badge variant="outline">
               📅 {formatDueDate(metadata.dueDate)}
             </Badge>
           )}
           {metadata.category && (
-            <Badge variant="outline" className="text-xs">
+            <Badge variant="outline">
               {metadata.category}
             </Badge>
           )}

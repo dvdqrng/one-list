@@ -22,6 +22,7 @@ interface TodoTextEditorProps {
   onToggleTodo: (id: string) => void
   onSelectTodo: (id: string) => void
   selectedTodoId: string | null
+  showMetadata: boolean
 }
 
 export function TodoTextEditor({
@@ -32,11 +33,13 @@ export function TodoTextEditor({
   onToggleTodo,
   onSelectTodo,
   selectedTodoId,
+  showMetadata,
 }: TodoTextEditorProps) {
   const [draftBlocks, setDraftBlocks] = useState<Block[]>([{ id: crypto.randomUUID(), text: "", isProcessing: false }])
   const timeoutRef = useRef<Record<string, NodeJS.Timeout>>({})
   const inputRefs = useRef<Record<string, HTMLInputElement | null>>({})
   const processingRef = useRef<Set<string>>(new Set())
+  const lastFocusedRef = useRef<string | null>(null)
 
   // Ensure we always have at least one draft block at the end
   useEffect(() => {
@@ -55,6 +58,28 @@ export function TodoTextEditor({
     })),
     ...draftBlocks,
   ]
+
+  // Ensure focus is always on a block - refocus the last block if focus is lost
+  useEffect(() => {
+    const handleFocusOut = () => {
+      // Small delay to check if focus moved to another input
+      setTimeout(() => {
+        const activeElement = document.activeElement
+        const isInputFocused = Object.values(inputRefs.current).some(ref => ref === activeElement)
+
+        if (!isInputFocused) {
+          // Focus was lost, refocus the last block (empty state)
+          const lastBlockId = blocks[blocks.length - 1]?.id
+          if (lastBlockId && inputRefs.current[lastBlockId]) {
+            inputRefs.current[lastBlockId]?.focus()
+          }
+        }
+      }, 0)
+    }
+
+    document.addEventListener('focusout', handleFocusOut)
+    return () => document.removeEventListener('focusout', handleFocusOut)
+  }, [blocks])
 
   const processBlock = useCallback(
     async (blockId: string, text: string) => {
@@ -190,14 +215,14 @@ export function TodoTextEditor({
   }
 
   return (
-    <div className="space-y-1">
+    <div className="space-y-0">
       {blocks.map((block, index) => {
         const todo = block.todo
 
         return (
           <div
             key={block.id}
-            className="group flex items-center gap-2 rounded-md border border-transparent px-3 py-2 transition-colors hover:bg-muted/30"
+            className="group flex items-center gap-2 rounded-md border border-transparent px-3 py-1 transition-colors hover:bg-muted/30"
           >
             {todo && (
               <Checkbox
@@ -228,25 +253,25 @@ export function TodoTextEditor({
               className={`flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground ${
                 todo?.completed ? "line-through opacity-60" : ""
               }`}
-              autoFocus={index === blocks.length - 1 && index > 0}
+              autoFocus={index === blocks.length - 1}
             />
 
             {block.isProcessing && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
 
-            {todo && !block.isProcessing && (
+            {todo && !block.isProcessing && showMetadata && (
               <div className="flex items-center gap-1" onClick={() => onSelectTodo(todo.id)}>
                 {todo.priority && (
-                  <Badge variant={getPriorityColor(todo.priority)} className="text-xs cursor-pointer">
+                  <Badge variant={getPriorityColor(todo.priority)} className="cursor-pointer">
                     {todo.priority}
                   </Badge>
                 )}
                 {todo.dueDate && (
-                  <Badge variant="outline" className="text-xs cursor-pointer">
+                  <Badge variant="outline" className="cursor-pointer">
                     📅 {formatDueDate(todo.dueDate)}
                   </Badge>
                 )}
                 {todo.category && (
-                  <Badge variant="outline" className="text-xs cursor-pointer">
+                  <Badge variant="outline" className="cursor-pointer">
                     {todo.category}
                   </Badge>
                 )}
