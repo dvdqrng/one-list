@@ -28,7 +28,11 @@ const ProcessResultSchema = z.object({
 })
 
 export async function processTodoText(input: string, existingTodos: Todo[]): Promise<ProcessResult> {
-  const { object } = await generateObject({
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    setTimeout(() => reject(new Error("Request timed out after 30 seconds")), 30000)
+  })
+
+  const generatePromise = generateObject({
     model: openai("gpt-4o-mini"),
     schema: ProcessResultSchema,
     prompt: `You are a smart todo assistant. Analyze the user's input and determine if they want to:
@@ -72,6 +76,8 @@ Priority Detection:
 
 Return the appropriate new todos and/or updates with clear reasoning.`,
   })
+
+  const { object } = await Promise.race([generatePromise, timeoutPromise])
 
   const newTodos: Todo[] = object.newTodos.map((todo) => ({
     id: crypto.randomUUID(),

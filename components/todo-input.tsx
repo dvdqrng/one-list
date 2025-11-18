@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Card } from "@/components/ui/card"
-import { Sparkles, Loader2, CheckCircle2, Mic, MicOff } from "lucide-react"
+import { Sparkles, Loader2, CheckCircle2, Mic, MicOff, XCircle, AlertTriangle } from "lucide-react"
 import { processTodoText } from "@/lib/process-todos"
 import type { Todo } from "@/lib/types"
 
@@ -18,7 +18,7 @@ interface TodoInputProps {
 
 export function TodoInput({ existingTodos, onAddTodos, onUpdateTodo, isProcessing, setIsProcessing }: TodoInputProps) {
   const [input, setInput] = useState("")
-  const [feedback, setFeedback] = useState<{ message: string; type: "success" | "error" }>({
+  const [feedback, setFeedback] = useState<{ message: string; type: "success" | "error" | "timeout" }>({
     message: "",
     type: "success",
   })
@@ -123,94 +123,89 @@ export function TodoInput({ existingTodos, onAddTodos, onUpdateTodo, isProcessin
       setTimeout(() => setFeedback({ message: "", type: "success" }), 4000)
     } catch (error) {
       console.error("[v0] Error processing todos:", error)
-      setFeedback({ message: "Failed to process. Please try again.", type: "error" })
-      setTimeout(() => setFeedback({ message: "", type: "success" }), 4000)
+
+      // Check if it's a timeout error
+      const isTimeout = error instanceof Error && error.message.includes("timed out")
+
+      setFeedback({
+        message: isTimeout
+          ? "Request timed out. The AI took too long to respond. Please try again."
+          : "Failed to process your request. Please check your connection and try again.",
+        type: isTimeout ? "timeout" : "error"
+      })
+      setTimeout(() => setFeedback({ message: "", type: "success" }), 6000)
     } finally {
       setIsProcessing(false)
     }
   }
 
   return (
-    <Card className="p-6 border-0 border-none">
-      <div className="space-y-4">
-        <div className="flex items-center gap-2 mb-2">
-          <Sparkles className="h-5 w-5 text-primary" />
-          <h2 className="text-lg font-semibold font-sans">Smart Todo Assistant</h2>
-        </div>
-
-        <div className="text-sm text-muted-foreground space-y-1 mb-3">
-          <p className="font-medium">Try saying:</p>
-          <ul className="list-disc list-inside space-y-0.5 ml-2">
-            <li>"Buy groceries tomorrow at 3pm"</li>
-            <li>"Mark the design task as high priority"</li>
-            <li>"Complete the grocery shopping task"</li>
-            <li>"Add urgent meeting prep for Monday"</li>
-          </ul>
-        </div>
-
-        <div className="relative">
-          <Textarea
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            placeholder={
-              isListening ? "Listening... speak now!" : "Type or speak naturally... I'll understand what you mean!"
-            }
-            className={`min-h-[100px] resize-none pr-12 ${isListening ? "ring-2 ring-primary" : ""}`}
-            disabled={isProcessing || isListening}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-                handleSubmit()
+    <div className="fixed bottom-0 left-0 right-0 bg-background border-t shadow-lg z-50">
+      <div className="mx-auto max-w-7xl px-4 md:px-8 py-4">
+        <div className="flex items-center gap-3">
+          <div className="relative flex-1">
+            <Textarea
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              placeholder={
+                isListening ? "Listening... speak now!" : "Type or speak naturally... I'll understand what you mean!"
               }
-            }}
-          />
-          {isSupported && (
-            <Button
-              type="button"
-              size="icon"
-              variant={isListening ? "default" : "ghost"}
-              className={`absolute right-2 top-2 ${isListening ? "animate-pulse" : ""}`}
-              onClick={toggleVoiceInput}
-              disabled={isProcessing}
-            >
-              {isListening ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
-            </Button>
-          )}
-        </div>
-
-        <div className="flex items-center justify-between">
-          <div className="text-sm">
-            {feedback.message ? (
-              <span
-                className={
-                  feedback.type === "success"
-                    ? "text-primary font-medium flex items-center gap-1"
-                    : "text-destructive font-medium"
+              className={`min-h-[60px] resize-none pr-12 ${isListening ? "ring-2 ring-primary" : ""}`}
+              disabled={isProcessing || isListening}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                  handleSubmit()
                 }
+              }}
+            />
+            {isSupported && (
+              <Button
+                type="button"
+                size="icon"
+                variant={isListening ? "default" : "ghost"}
+                className={`absolute right-2 top-2 ${isListening ? "animate-pulse" : ""}`}
+                onClick={toggleVoiceInput}
+                disabled={isProcessing}
               >
-                {feedback.type === "success" && <CheckCircle2 className="h-4 w-4" />}
-                {feedback.message}
-              </span>
-            ) : (
-              <span className="text-muted-foreground">
-                {isSupported ? "Press ⌘+Enter to submit or use voice" : "Press ⌘+Enter to submit"}
-              </span>
+                {isListening ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
+              </Button>
             )}
           </div>
-          <Button onClick={handleSubmit} disabled={!input.trim() || isProcessing} className="gap-2">
+
+          <Button onClick={handleSubmit} disabled={!input.trim() || isProcessing} className="gap-2 shrink-0">
             {isProcessing ? (
               <>
                 <Loader2 className="h-4 w-4 animate-spin" />
-                Processing...
+                <span className="hidden md:inline">Processing...</span>
               </>
             ) : (
               <>
                 <Sparkles className="h-4 w-4" />
-                Process
+                <span className="hidden md:inline">Process</span>
               </>
             )}
           </Button>
         </div>
+
+        {feedback.message && (
+          <div className="mt-2 text-sm">
+            <span
+              className={
+                feedback.type === "success"
+                  ? "text-primary font-medium flex items-center gap-1"
+                  : feedback.type === "timeout"
+                    ? "text-orange-500 font-medium flex items-center gap-1"
+                    : "text-destructive font-medium flex items-center gap-1"
+              }
+            >
+              {feedback.type === "success" && <CheckCircle2 className="h-4 w-4" />}
+              {feedback.type === "timeout" && <AlertTriangle className="h-4 w-4" />}
+              {feedback.type === "error" && <XCircle className="h-4 w-4" />}
+              {feedback.message}
+            </span>
+          </div>
+        )}
       </div>
-    </Card>
+    </div>
   )
 }

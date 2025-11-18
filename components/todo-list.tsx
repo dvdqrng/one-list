@@ -3,20 +3,20 @@
 import { Card } from "@/components/ui/card"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
-import { Trash2, Calendar, AlertCircle, ChevronDown, ChevronRight } from "lucide-react"
+import { Trash2, AlertCircle } from "lucide-react"
 import type { Todo } from "@/lib/types"
 import { cn } from "@/lib/utils"
-import { useState } from "react"
 
 interface TodoListProps {
   todos: Todo[]
   onToggle: (id: string) => void
   onDelete: (id: string) => void
   onUpdate: (id: string, updates: Partial<Todo>) => void
+  onSelect: (id: string) => void
+  selectedTodoId: string | null
 }
 
-export function TodoList({ todos, onToggle, onDelete }: TodoListProps) {
+export function TodoList({ todos, onToggle, onDelete, onSelect, selectedTodoId }: TodoListProps) {
   const activeTodos = todos.filter((t) => !t.completed)
   const completedTodos = todos.filter((t) => t.completed)
 
@@ -43,7 +43,14 @@ export function TodoList({ todos, onToggle, onDelete }: TodoListProps) {
           <h3 className="text-sm font-medium text-muted-foreground px-1">Active Tasks ({activeTodos.length})</h3>
           <div className="space-y-2">
             {activeTodos.map((todo) => (
-              <TodoItem key={todo.id} todo={todo} onToggle={onToggle} onDelete={onDelete} />
+              <TodoItem
+                key={todo.id}
+                todo={todo}
+                onToggle={onToggle}
+                onDelete={onDelete}
+                onSelect={onSelect}
+                isSelected={selectedTodoId === todo.id}
+              />
             ))}
           </div>
         </div>
@@ -54,7 +61,14 @@ export function TodoList({ todos, onToggle, onDelete }: TodoListProps) {
           <h3 className="text-sm font-medium text-muted-foreground px-1">Completed ({completedTodos.length})</h3>
           <div className="space-y-2">
             {completedTodos.map((todo) => (
-              <TodoItem key={todo.id} todo={todo} onToggle={onToggle} onDelete={onDelete} />
+              <TodoItem
+                key={todo.id}
+                todo={todo}
+                onToggle={onToggle}
+                onDelete={onDelete}
+                onSelect={onSelect}
+                isSelected={selectedTodoId === todo.id}
+              />
             ))}
           </div>
         </div>
@@ -67,95 +81,50 @@ function TodoItem({
   todo,
   onToggle,
   onDelete,
+  onSelect,
+  isSelected,
 }: {
   todo: Todo
   onToggle: (id: string) => void
   onDelete: (id: string) => void
+  onSelect: (id: string) => void
+  isSelected: boolean
 }) {
-  const [isExpanded, setIsExpanded] = useState(false)
-  const hasDetails = todo.details || todo.priority || todo.dueDate || todo.category
-
   return (
-    <Card className={cn("transition-all hover:shadow-md", todo.completed && "opacity-60")}>
-      <div className="p-4 flex items-start gap-3">
-        <Checkbox checked={todo.completed} onCheckedChange={() => onToggle(todo.id)} className="mt-1" />
-
-        <div className="flex-1 min-w-0">
-          <div className="flex items-start gap-2">
-            {hasDetails && (
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-6 w-6 shrink-0 mt-0.5"
-                onClick={() => setIsExpanded(!isExpanded)}
-              >
-                {isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-              </Button>
-            )}
-            <p
-              className={cn(
-                "font-medium leading-relaxed flex-1",
-                todo.completed && "line-through text-muted-foreground",
-                !hasDetails && "ml-8",
-              )}
-            >
-              {todo.title}
-            </p>
-          </div>
-
-          {hasDetails && isExpanded && (
-            <div className="mt-3 ml-8 space-y-3 p-3 rounded-lg bg-muted/50 border">
-              {todo.details && (
-                <div>
-                  <p className="text-xs font-medium text-muted-foreground mb-1">Details</p>
-                  <p className="text-sm leading-relaxed">{todo.details}</p>
-                </div>
-              )}
-
-              <div className="flex flex-wrap items-center gap-2">
-                {todo.priority && (
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-xs font-medium text-muted-foreground">Priority:</span>
-                    <Badge
-                      variant={
-                        todo.priority === "high" ? "destructive" : todo.priority === "medium" ? "default" : "secondary"
-                      }
-                      className="text-xs"
-                    >
-                      {todo.priority}
-                    </Badge>
-                  </div>
-                )}
-                {todo.dueDate && (
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-xs font-medium text-muted-foreground">Due:</span>
-                    <Badge variant="outline" className="text-xs gap-1">
-                      <Calendar className="h-3 w-3" />
-                      {new Date(todo.dueDate).toLocaleDateString()}
-                    </Badge>
-                  </div>
-                )}
-                {todo.category && (
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-xs font-medium text-muted-foreground">Category:</span>
-                    <Badge variant="outline" className="text-xs">
-                      {todo.category}
-                    </Badge>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
+    <Card
+      className={cn(
+        "transition-all hover:shadow-md cursor-pointer",
+        todo.completed && "opacity-60",
+        isSelected && "ring-2 ring-primary",
+      )}
+      onClick={() => onSelect(todo.id)}
+    >
+      <div className="p-3 flex items-start gap-3">
+        <div onClick={(e) => e.stopPropagation()}>
+          <Checkbox checked={todo.completed} onCheckedChange={() => onToggle(todo.id)} className="mt-1" />
         </div>
 
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={() => onDelete(todo.id)}
-          className="shrink-0 text-muted-foreground hover:text-destructive"
-        >
-          <Trash2 className="h-4 w-4" />
-        </Button>
+        <div className="flex-1 min-w-0">
+          <p
+            className={cn(
+              "font-medium leading-relaxed",
+              todo.completed && "line-through text-muted-foreground",
+            )}
+          >
+            {todo.title}
+          </p>
+        </div>
+
+        <div onClick={(e) => e.stopPropagation()}>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => onDelete(todo.id)}
+            className="shrink-0 text-muted-foreground hover:text-destructive"
+          >
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        </div>
       </div>
     </Card>
   )
