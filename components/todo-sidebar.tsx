@@ -4,7 +4,7 @@ import { useState } from "react"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Calendar, AlertCircle, Tag, ChevronLeft, ChevronRight } from "lucide-react"
+import { CalendarBlankIcon, WarningCircleIcon, TagIcon, CaretLeftIcon, CaretRightIcon } from "@phosphor-icons/react"
 import type { Todo } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
@@ -26,7 +26,7 @@ export function TodoSidebar({ selectedTodo }: TodoSidebarProps) {
           title="Expand sidebar"
           className="h-8 w-8"
         >
-          <ChevronLeft className="h-4 w-4" />
+          <CaretLeftIcon className="h-4 w-4" weight="bold" />
         </Button>
       </div>
     )
@@ -45,12 +45,12 @@ export function TodoSidebar({ selectedTodo }: TodoSidebarProps) {
               className="h-8 w-8 -mr-2"
               title="Collapse sidebar"
             >
-              <ChevronRight className="h-4 w-4" />
+              <CaretRightIcon className="h-4 w-4" weight="bold" />
             </Button>
           </div>
           <div className="flex-1 flex flex-col items-center justify-center text-center gap-3">
             <div className="h-16 w-16 rounded-full bg-muted flex items-center justify-center">
-              <AlertCircle className="h-8 w-8 text-muted-foreground" />
+              <WarningCircleIcon className="h-8 w-8 text-muted-foreground" weight="fill" />
             </div>
             <div>
               <h3 className="text-sm font-medium mb-1">No task selected</h3>
@@ -74,7 +74,7 @@ export function TodoSidebar({ selectedTodo }: TodoSidebarProps) {
             className="h-8 w-8 -mr-2"
             title="Collapse sidebar"
           >
-            <ChevronRight className="h-4 w-4" />
+            <CaretRightIcon className="h-4 w-4" weight="bold" />
           </Button>
         </div>
         <div className="space-y-6">
@@ -105,7 +105,7 @@ export function TodoSidebar({ selectedTodo }: TodoSidebarProps) {
               <div>
                 <p className="text-sm text-muted-foreground mb-2">Due Date</p>
                 <Badge variant="secondary" className="text-sm gap-1.5">
-                  <Calendar className="h-4 w-4" />
+                  <CalendarBlankIcon className="h-4 w-4" weight="fill" />
                   {new Date(selectedTodo.dueDate).toLocaleDateString()}
                 </Badge>
               </div>
@@ -115,7 +115,7 @@ export function TodoSidebar({ selectedTodo }: TodoSidebarProps) {
               <div>
                 <p className="text-sm text-muted-foreground mb-2">Category</p>
                 <Badge variant="secondary" className="text-sm gap-1.5">
-                  <Tag className="h-4 w-4" />
+                  <TagIcon className="h-4 w-4" weight="fill" />
                   {selectedTodo.category}
                 </Badge>
               </div>

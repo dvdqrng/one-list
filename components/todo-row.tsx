@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useRef, useEffect } from "react"
-import { X, Loader2, Calendar } from "lucide-react"
+import { XIcon, SpinnerIcon, CalendarBlankIcon } from "@phosphor-icons/react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -113,7 +113,7 @@ export function TodoRow({
       />
 
       {isProcessing && (
-        <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+        <SpinnerIcon className="h-4 w-4 animate-spin text-muted-foreground" weight="bold" />
       )}
 
       {!isProcessing && metadata && (
@@ -125,7 +125,7 @@ export function TodoRow({
           )}
           {metadata.dueDate && (
             <Badge variant="secondary" className="gap-1">
-              <Calendar className="h-3 w-3" />
+              <CalendarBlankIcon className="h-3 w-3" weight="fill" />
               {formatDueDate(metadata.dueDate)}
             </Badge>
           )}
@@ -146,7 +146,7 @@ export function TodoRow({
           onDelete()
         }}
       >
-        <X className="h-4 w-4" />
+        <XIcon className="h-4 w-4" weight="bold" />
       </Button>
     </div>
   )

@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { GitMerge, Loader2 } from "lucide-react"
+import { IntersectIcon, SpinnerIcon } from "@phosphor-icons/react"
 import { Button } from "@/components/ui/button"
 import { findSimilarTasks, type SimilarTaskGroup } from "@/lib/find-similar-tasks"
 import type { Todo } from "@/lib/types"
@@ -33,18 +33,13 @@ export function MergeButton({ todos, onMergeGroupsFound }: MergeButtonProps) {
       size="sm"
       onClick={handleClick}
       disabled={isSearching || todos.length < 2}
-      className="gap-1 h-6 text-xs px-1.5"
+      className="h-7 w-7 p-0"
+      title={isSearching ? "Finding similar tasks..." : "Find similar tasks"}
     >
       {isSearching ? (
-        <>
-          <Loader2 className="h-2 w-2 animate-spin fill-current" />
-          Finding similar tasks...
-        </>
+        <SpinnerIcon size={12} className="animate-spin" weight="bold" />
       ) : (
-        <>
-          <GitMerge className="h-2 w-2 fill-current" />
-          Find Similar Tasks
-        </>
+        <IntersectIcon size={12} weight="fill" />
       )}
     </Button>
   )

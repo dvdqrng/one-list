@@ -8,7 +8,8 @@ import { MergeDialog } from "./merge-dialog"
 import { TodoList } from "./todo-list"
 import { TodoSidebar } from "./todo-sidebar"
 import { Button } from "./ui/button"
-import { Star, Zap } from "lucide-react"
+import { StarIcon, LightningIcon, MoonIcon, SunIcon } from "@phosphor-icons/react"
+import { useTheme } from "next-themes"
 import { aiQueueManager } from "@/lib/ai-queue-manager"
 import { electronDB, isElectron } from "@/lib/electron/database"
 import type { Todo, Title, Separator } from "@/lib/types"
@@ -25,6 +26,7 @@ export function TodoApp() {
   const [showMetadata, setShowMetadata] = useState(true)
   const [showAiInput, setShowAiInput] = useState(true)
   const [isLoading, setIsLoading] = useState(true)
+  const { theme, setTheme } = useTheme()
 
   // Load initial data from Electron database
   useEffect(() => {
@@ -260,7 +262,7 @@ export function TodoApp() {
                   onClick={() => setShowAiInput(!showAiInput)}
                   title={showAiInput ? "Hide AI Input" : "Show AI Input"}
                 >
-                  <Zap className="h-1.5 w-1.5" fill="currentColor" />
+                  <LightningIcon size={12} weight="fill" />
                 </Button>
                 <Button
                   variant={showMetadata ? "default" : "outline"}
@@ -269,7 +271,20 @@ export function TodoApp() {
                   onClick={() => setShowMetadata(!showMetadata)}
                   title={showMetadata ? "Hide metadata" : "Show metadata"}
                 >
-                  <Star className="h-1.5 w-1.5" fill="currentColor" />
+                  <StarIcon size={12} weight="fill" />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 w-7 p-0"
+                  onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+                  title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+                >
+                  {theme === "dark" ? (
+                    <SunIcon size={12} weight="fill" />
+                  ) : (
+                    <MoonIcon size={12} weight="fill" />
+                  )}
                 </Button>
                 <MergeButton todos={todos} onMergeGroupsFound={handleMergeGroupsFound} />
               </div>

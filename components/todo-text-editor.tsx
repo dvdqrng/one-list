@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useRef, useMemo } from "react"
-import { Loader2, Calendar } from "lucide-react"
+import { SpinnerIcon, CalendarBlankIcon } from "@phosphor-icons/react"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Badge } from "@/components/ui/badge"
 import { aiQueueManager } from "@/lib/ai-queue-manager"
@@ -383,7 +383,7 @@ export function TodoTextEditor({
               />
 
               {todo && todo.aiProcessingStatus && (todo.aiProcessingStatus === "processing" || todo.aiProcessingStatus === "pending") && (
-                <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                <SpinnerIcon className="h-4 w-4 animate-spin text-muted-foreground" weight="bold" />
               )}
 
               {todo && showMetadata && (
@@ -395,7 +395,7 @@ export function TodoTextEditor({
                   )}
                   {todo.dueDate && (
                     <Badge variant="secondary" className="cursor-pointer gap-1">
-                      <Calendar className="h-3 w-3" />
+                      <CalendarBlankIcon className="h-3 w-3" weight="fill" />
                       {formatDueDate(todo.dueDate)}
                     </Badge>
                   )}

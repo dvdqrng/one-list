@@ -22,7 +22,9 @@
       "Bash(cat:*)",
       "Bash(node_modules/.bin/electron:*)",
       "Bash(echo:*)",
-      "Bash(unset:*)"
+      "Bash(unset:*)",
+      "Bash(pnpm remove:*)",
+      "Bash(cd:*)"
     ],
     "deny": [],
     "ask": []

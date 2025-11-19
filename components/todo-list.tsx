@@ -3,7 +3,7 @@
 import { Card } from "@/components/ui/card"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Button } from "@/components/ui/button"
-import { Trash2, AlertCircle } from "lucide-react"
+import { TrashIcon, WarningCircleIcon } from "@phosphor-icons/react"
 import type { Todo } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
@@ -25,7 +25,7 @@ export function TodoList({ todos, onToggle, onDelete, onSelect, selectedTodoId }
       <Card className="p-12 text-center border-none">
         <div className="flex flex-col items-center gap-3">
           <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center">
-            <AlertCircle className="h-6 w-6 text-muted-foreground" />
+            <WarningCircleIcon className="h-6 w-6 text-muted-foreground" weight="fill" />
           </div>
           <div>
             <h3 className="text-sm font-medium mb-1">No tasks yet</h3>
@@ -122,7 +122,7 @@ function TodoItem({
             onClick={() => onDelete(todo.id)}
             className="shrink-0 text-muted-foreground hover:text-destructive"
           >
-            <Trash2 className="h-4 w-4" />
+            <TrashIcon className="h-4 w-4" weight="fill" />
           </Button>
         </div>
       </div>
