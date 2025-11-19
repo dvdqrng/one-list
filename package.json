@@ -2,12 +2,13 @@
   "name": "notes-list",
   "version": "0.1.0",
   "private": true,
+  "main": "electron/main.js",
   "scripts": {
     "build": "next build",
     "dev": "next dev",
     "lint": "eslint .",
     "start": "next start",
-    "electron:dev": "NODE_ENV=development electron .",
+    "electron:dev": "unset ELECTRON_RUN_AS_NODE && NODE_ENV=development electron .",
     "electron:build": "next build && electron-builder",
     "export": "next build && next export",
     "dev:all": "concurrently \"npm run dev\" \"wait-on http://localhost:3000 && npm run electron:dev\""
@@ -97,6 +98,7 @@
     "react-resizable-panels": "^2.1.7",
     "recharts": "2.15.4",
     "sonner": "^1.7.4",
+    "sql.js": "^1.13.0",
     "tailwind-merge": "^2.5.5",
     "tailwindcss-animate": "^1.0.7",
     "vaul": "^0.9.9",

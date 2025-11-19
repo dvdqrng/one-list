@@ -13,7 +13,16 @@
       "Bash(npm install:*)",
       "Bash(npm run build:electron:*)",
       "Bash(npm run:*)",
-      "Bash(pkill:*)"
+      "Bash(pkill:*)",
+      "Bash(pnpm run dev:all:*)",
+      "Bash(pnpm approve-builds:*)",
+      "Bash(pnpm rebuild:*)",
+      "Bash(pnpm config:*)",
+      "Bash(pnpm install:*)",
+      "Bash(cat:*)",
+      "Bash(node_modules/.bin/electron:*)",
+      "Bash(echo:*)",
+      "Bash(unset:*)"
     ],
     "deny": [],
     "ask": []
