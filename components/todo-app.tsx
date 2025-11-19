@@ -8,10 +8,11 @@ import { MergeDialog } from "./merge-dialog"
 import { TodoList } from "./todo-list"
 import { TodoSidebar } from "./todo-sidebar"
 import { Button } from "./ui/button"
-import { Star, Zap } from "lucide-react"
+import { StarIcon, LightningIcon, MoonIcon, SunIcon } from "@phosphor-icons/react"
+import { useTheme } from "next-themes"
 import { aiQueueManager } from "@/lib/ai-queue-manager"
 import { electronDB, isElectron } from "@/lib/electron/database"
-import type { Todo, Title, Separator } from "@/lib/types"
+import type { Todo, Title, Separator, BlockItem } from "@/lib/types"
 import type { SimilarTaskGroup } from "@/lib/find-similar-tasks"
 
 export function TodoApp() {
@@ -25,6 +26,7 @@ export function TodoApp() {
   const [showMetadata, setShowMetadata] = useState(true)
   const [showAiInput, setShowAiInput] = useState(true)
   const [isLoading, setIsLoading] = useState(true)
+  const { theme, setTheme } = useTheme()
 
   // Load initial data from Electron database
   useEffect(() => {
@@ -202,14 +204,64 @@ export function TodoApp() {
     setSelectedTodoId(id === selectedTodoId ? null : id)
   }
 
+  const handleReorderItems = async (reorderedItems: BlockItem[]) => {
+    // Optimistic update - update state immediately
+    const now = Date.now()
+    const updatedTodos: Todo[] = []
+    const updatedTitles: Title[] = []
+    const updatedSeparators: Separator[] = []
+
+    for (let i = 0; i < reorderedItems.length; i++) {
+      const item = reorderedItems[i]
+      const newCreatedAt = new Date(now + i).toISOString()
+
+      if ('completed' in item) {
+        // It's a todo
+        updatedTodos.push({ ...item, createdAt: newCreatedAt })
+      } else if ('text' in item) {
+        // It's a title
+        updatedTitles.push({ ...item, createdAt: newCreatedAt })
+      } else {
+        // It's a separator
+        updatedSeparators.push({ ...item, createdAt: newCreatedAt })
+      }
+    }
+
+    // Apply optimistic updates immediately
+    setTodos(updatedTodos)
+    setTitles(updatedTitles)
+    setSeparators(updatedSeparators)
+
+    // Persist to database - WAIT for completion to avoid race conditions
+    try {
+      await Promise.all(
+        reorderedItems.map((item, i) => {
+          const newCreatedAt = new Date(now + i).toISOString()
+
+          if ('completed' in item) {
+            return electronDB.updateTodo(item.id, { createdAt: newCreatedAt })
+          } else if ('text' in item) {
+            return electronDB.updateTitleCreatedAt(item.id, newCreatedAt)
+          } else {
+            return electronDB.updateSeparatorCreatedAt(item.id, newCreatedAt)
+          }
+        })
+      )
+    } catch (error) {
+      console.error('Failed to persist reorder:', error)
+      // Only reload on error
+      loadData()
+    }
+  }
+
   const handleMergeGroupsFound = (groups: SimilarTaskGroup[]) => {
     setMergeGroups(groups)
     setShowMergeDialog(true)
   }
 
-  const handleMerge = (groupsToMerge: SimilarTaskGroup[]) => {
+  const handleMerge = async (groupsToMerge: SimilarTaskGroup[]) => {
     // Process each group
-    groupsToMerge.forEach((group) => {
+    for (const group of groupsToMerge) {
       // Create the merged todo
       const mergedTodo: Todo = {
         id: crypto.randomUUID(),
@@ -222,12 +274,26 @@ export function TodoApp() {
         createdAt: new Date().toISOString(),
       }
 
-      // Remove the old todos
-      setTodos((prev) => prev.filter((todo) => !group.taskIds.includes(todo.id)))
+      try {
+        // Delete the old todos from database
+        await Promise.all(
+          group.taskIds.map(id => electronDB.deleteTodo(id))
+        )
 
-      // Add the merged todo
-      setTodos((prev) => [...prev, mergedTodo])
-    })
+        // Create the merged todo in database
+        await electronDB.createTodo(mergedTodo)
+
+        // Optimistic update - remove old todos and add merged one
+        setTodos((prev) => [
+          ...prev.filter((todo) => !group.taskIds.includes(todo.id)),
+          mergedTodo
+        ])
+      } catch (error) {
+        console.error('Failed to merge todos:', error)
+        // Reload on error
+        loadData()
+      }
+    }
   }
 
   const selectedTodo = todos.find((t) => t.id === selectedTodoId)
@@ -260,7 +326,7 @@ export function TodoApp() {
                   onClick={() => setShowAiInput(!showAiInput)}
                   title={showAiInput ? "Hide AI Input" : "Show AI Input"}
                 >
-                  <Zap className="h-1.5 w-1.5" fill="currentColor" />
+                  <LightningIcon size={12} weight="fill" />
                 </Button>
                 <Button
                   variant={showMetadata ? "default" : "outline"}
@@ -269,7 +335,20 @@ export function TodoApp() {
                   onClick={() => setShowMetadata(!showMetadata)}
                   title={showMetadata ? "Hide metadata" : "Show metadata"}
                 >
-                  <Star className="h-1.5 w-1.5" fill="currentColor" />
+                  <StarIcon size={12} weight="fill" />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 w-7 p-0"
+                  onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+                  title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+                >
+                  {theme === "dark" ? (
+                    <SunIcon size={12} weight="fill" />
+                  ) : (
+                    <MoonIcon size={12} weight="fill" />
+                  )}
                 </Button>
                 <MergeButton todos={todos} onMergeGroupsFound={handleMergeGroupsFound} />
               </div>
@@ -289,6 +368,7 @@ export function TodoApp() {
               onDeleteSeparator={handleDeleteSeparator}
               onToggleTodo={handleToggleTodo}
               onSelectTodo={handleSelectTodo}
+              onReorderItems={handleReorderItems}
               selectedTodoId={selectedTodoId}
               showMetadata={showMetadata}
             />

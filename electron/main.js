@@ -388,7 +388,12 @@ ipcMain.handle('db:getTitles', () => {
     const stmt = db.prepare('SELECT * FROM titles ORDER BY created_at ASC');
     const rows = [];
     while (stmt.step()) {
-      rows.push(stmt.getAsObject());
+      const row = stmt.getAsObject();
+      rows.push({
+        id: row.id,
+        text: row.text,
+        createdAt: row.created_at
+      });
     }
     stmt.free();
     return rows;
@@ -429,6 +434,20 @@ ipcMain.handle('db:updateTitle', (event, id, text) => {
   }
 });
 
+ipcMain.handle('db:updateTitleCreatedAt', (event, id, createdAt) => {
+  try {
+    const stmt = db.prepare('UPDATE titles SET created_at = ? WHERE id = ?');
+    stmt.run([createdAt, id]);
+    stmt.free();
+
+    saveDatabase();
+    return { id, createdAt };
+  } catch (error) {
+    console.error('Failed to update title createdAt:', error);
+    throw error;
+  }
+});
+
 ipcMain.handle('db:deleteTitle', (event, id) => {
   try {
     const stmt = db.prepare('DELETE FROM titles WHERE id = ?');
@@ -447,7 +466,11 @@ ipcMain.handle('db:getSeparators', () => {
     const stmt = db.prepare('SELECT * FROM separators ORDER BY created_at ASC');
     const rows = [];
     while (stmt.step()) {
-      rows.push(stmt.getAsObject());
+      const row = stmt.getAsObject();
+      rows.push({
+        id: row.id,
+        createdAt: row.created_at
+      });
     }
     stmt.free();
     return rows;
@@ -470,6 +493,20 @@ ipcMain.handle('db:createSeparator', () => {
     return { id, createdAt };
   } catch (error) {
     console.error('Failed to create separator:', error);
+    throw error;
+  }
+});
+
+ipcMain.handle('db:updateSeparatorCreatedAt', (event, id, createdAt) => {
+  try {
+    const stmt = db.prepare('UPDATE separators SET created_at = ? WHERE id = ?');
+    stmt.run([createdAt, id]);
+    stmt.free();
+
+    saveDatabase();
+    return { id, createdAt };
+  } catch (error) {
+    console.error('Failed to update separator createdAt:', error);
     throw error;
   }
 });

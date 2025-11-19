@@ -46,6 +46,10 @@ const electronAPI = {
     console.log('updateTitle called', id, text);
     return ipcRenderer.invoke('db:updateTitle', id, text);
   },
+  updateTitleCreatedAt: (id, createdAt) => {
+    console.log('updateTitleCreatedAt called', id, createdAt);
+    return ipcRenderer.invoke('db:updateTitleCreatedAt', id, createdAt);
+  },
   deleteTitle: (id) => {
     console.log('deleteTitle called', id);
     return ipcRenderer.invoke('db:deleteTitle', id);
@@ -59,6 +63,10 @@ const electronAPI = {
   createSeparator: () => {
     console.log('createSeparator called');
     return ipcRenderer.invoke('db:createSeparator');
+  },
+  updateSeparatorCreatedAt: (id, createdAt) => {
+    console.log('updateSeparatorCreatedAt called', id, createdAt);
+    return ipcRenderer.invoke('db:updateSeparatorCreatedAt', id, createdAt);
   },
   deleteSeparator: (id) => {
     console.log('deleteSeparator called', id);

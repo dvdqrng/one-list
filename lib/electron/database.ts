@@ -64,6 +64,20 @@ class WebDatabase {
     }
   }
 
+  async updateTitleCreatedAt(id: string, createdAt: string): Promise<void> {
+    const index = this.titles.findIndex((t) => t.id === id)
+    if (index !== -1) {
+      this.titles[index] = { ...this.titles[index], createdAt }
+    }
+  }
+
+  async updateSeparatorCreatedAt(id: string, createdAt: string): Promise<void> {
+    const index = this.separators.findIndex((s) => s.id === id)
+    if (index !== -1) {
+      this.separators[index] = { ...this.separators[index], createdAt }
+    }
+  }
+
   async deleteTodo(id: string): Promise<void> {
     this.todos = this.todos.filter((t) => t.id !== id)
   }
@@ -142,6 +156,18 @@ export const electronDB = {
       return (window as any).electronDB.updateTitle(id, text)
     }
     return webDB?.updateTitle(id, text)
+  },
+  updateTitleCreatedAt: async (id: string, createdAt: string) => {
+    if (isElectron && (window as any).electronDB) {
+      return (window as any).electronDB.updateTitleCreatedAt(id, createdAt)
+    }
+    return webDB?.updateTitleCreatedAt(id, createdAt)
+  },
+  updateSeparatorCreatedAt: async (id: string, createdAt: string) => {
+    if (isElectron && (window as any).electronDB) {
+      return (window as any).electronDB.updateSeparatorCreatedAt(id, createdAt)
+    }
+    return webDB?.updateSeparatorCreatedAt(id, createdAt)
   },
   deleteTodo: async (id: string) => {
     if (isElectron && (window as any).electronDB) {

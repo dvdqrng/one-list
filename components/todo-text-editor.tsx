@@ -1,11 +1,28 @@
 "use client"
 
 import { useState, useRef, useMemo } from "react"
-import { Loader2, Calendar } from "lucide-react"
+import { SpinnerIcon, CalendarBlankIcon, DotsSixVerticalIcon } from "@phosphor-icons/react"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Badge } from "@/components/ui/badge"
 import { aiQueueManager } from "@/lib/ai-queue-manager"
 import type { Todo, Title, Separator, BlockItem } from "@/lib/types"
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+} from "@dnd-kit/core"
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable"
+import { CSS } from "@dnd-kit/utilities"
 
 type BlockType = "todo" | "title"
 
@@ -13,6 +30,41 @@ interface DraftBlock {
   id: string
   type: BlockType
   text: string
+}
+
+interface SortableItemProps {
+  id: string
+  children: React.ReactNode
+}
+
+function SortableItem({ id, children }: SortableItemProps) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id })
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  }
+
+  return (
+    <div ref={setNodeRef} style={style} className="group relative">
+      <div
+        {...attributes}
+        {...listeners}
+        className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-[18px] opacity-0 group-hover:opacity-100 cursor-grab active:cursor-grabbing transition-opacity z-10"
+      >
+        <DotsSixVerticalIcon size={12} weight="bold" className="text-muted-foreground" />
+      </div>
+      {children}
+    </div>
+  )
 }
 
 interface TodoTextEditorProps {
@@ -29,6 +81,7 @@ interface TodoTextEditorProps {
   onDeleteSeparator: (id: string) => void
   onToggleTodo: (id: string) => void
   onSelectTodo: (id: string) => void
+  onReorderItems: (items: BlockItem[]) => void
   selectedTodoId: string | null
   showMetadata: boolean
 }
@@ -47,6 +100,7 @@ export function TodoTextEditor({
   onDeleteSeparator,
   onToggleTodo,
   onSelectTodo,
+  onReorderItems,
   selectedTodoId,
   showMetadata,
 }: TodoTextEditorProps) {
@@ -58,6 +112,18 @@ export function TodoTextEditor({
   }])
 
   const inputRefs = useRef<Record<string, HTMLInputElement | null>>({})
+
+  // Set up drag and drop sensors
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8,
+      },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  )
 
   // Combine saved items with drafts for rendering
   // Saved items come from props, drafts from state
@@ -73,30 +139,12 @@ export function TodoTextEditor({
       return timeA - timeB
     })
 
-    // Update todos with their group title based on position
-    let currentTitleId: string | undefined = undefined
-    savedItems.forEach(item => {
-      if ('text' in item && !('completed' in item)) {
-        // It's a title
-        currentTitleId = item.id
-      } else if ('completed' in item) {
-        // It's a todo - assign to current title
-        if (item.groupTitleId !== currentTitleId) {
-          // Update the todo's groupTitleId if it changed
-          onUpdateTodo(item.id, { groupTitleId: currentTitleId })
-        }
-      } else if (!('text' in item) && !('completed' in item)) {
-        // It's a separator - break the group
-        currentTitleId = undefined
-      }
-    })
-
     const items: Array<{ type: 'saved', item: BlockItem } | { type: 'draft', item: DraftBlock }> = [
       ...savedItems.map(item => ({ type: 'saved' as const, item })),
       ...drafts.map(draft => ({ type: 'draft' as const, item: draft })),
     ]
     return items
-  }, [todos, titles, drafts, onUpdateTodo])
+  }, [todos, titles, separators, drafts])
 
   const handleDraftChange = (draftId: string, newText: string) => {
     setDrafts(prev => prev.map(d =>
@@ -295,9 +343,60 @@ export function TodoTextEditor({
     return "secondary"
   }
 
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event
+
+    if (!over || active.id === over.id) {
+      return
+    }
+
+    // Only reorder saved items, not drafts
+    const savedItems: BlockItem[] = [
+      ...todos.map(todo => todo as BlockItem),
+      ...titles.map(title => title as BlockItem),
+      ...separators.map(separator => separator as BlockItem),
+    ].sort((a, b) => {
+      const timeA = new Date(a.createdAt).getTime()
+      const timeB = new Date(b.createdAt).getTime()
+      return timeA - timeB
+    })
+
+    const oldIndex = savedItems.findIndex((item) => item.id === active.id)
+    const newIndex = savedItems.findIndex((item) => item.id === over.id)
+
+    if (oldIndex === -1 || newIndex === -1) {
+      return
+    }
+
+    const reorderedItems = arrayMove(savedItems, oldIndex, newIndex)
+    onReorderItems(reorderedItems)
+  }
+
+  // Only saved items can be dragged
+  const savedItems = useMemo(() => {
+    return [
+      ...todos.map(todo => todo as BlockItem),
+      ...titles.map(title => title as BlockItem),
+      ...separators.map(separator => separator as BlockItem),
+    ].sort((a, b) => {
+      const timeA = new Date(a.createdAt).getTime()
+      const timeB = new Date(b.createdAt).getTime()
+      return timeA - timeB
+    })
+  }, [todos, titles, separators])
+
   return (
-    <div className="space-y-0">
-      {allItems.map((item, index) => {
+    <DndContext
+      sensors={sensors}
+      collisionDetection={closestCenter}
+      onDragEnd={handleDragEnd}
+    >
+      <SortableContext
+        items={savedItems.map(item => item.id)}
+        strategy={verticalListSortingStrategy}
+      >
+        <div className="space-y-0">
+          {allItems.map((item, index) => {
         if (item.type === 'saved') {
           const saved = item.item
           const isTodo = 'completed' in saved
@@ -310,41 +409,42 @@ export function TodoTextEditor({
           // Render separator as visual spacer
           if (separator) {
             return (
-              <div
-                key={saved.id}
-                className="h-4 flex items-center px-3 cursor-pointer hover:bg-muted/20"
-                onClick={() => {
-                  // Delete separator and create a new draft
-                  onDeleteSeparator(separator.id)
-                  const newDraft: DraftBlock = {
-                    id: crypto.randomUUID(),
-                    type: "todo",
-                    text: "",
-                  }
-                  setDrafts(prev => {
-                    // Insert at the end (will be sorted by createdAt)
-                    return [...prev, newDraft]
-                  })
-                  // Focus the input
-                  setTimeout(() => {
-                    inputRefs.current[newDraft.id]?.focus()
-                  }, 0)
-                }}
-              >
-                <div className="w-full h-px bg-border/30" />
-              </div>
+              <SortableItem key={saved.id} id={saved.id}>
+                <div
+                  className="h-4 flex items-center px-3 cursor-pointer hover:bg-muted/20"
+                  onClick={() => {
+                    // Delete separator and create a new draft
+                    onDeleteSeparator(separator.id)
+                    const newDraft: DraftBlock = {
+                      id: crypto.randomUUID(),
+                      type: "todo",
+                      text: "",
+                    }
+                    setDrafts(prev => {
+                      // Insert at the end (will be sorted by createdAt)
+                      return [...prev, newDraft]
+                    })
+                    // Focus the input
+                    setTimeout(() => {
+                      inputRefs.current[newDraft.id]?.focus()
+                    }, 0)
+                  }}
+                >
+                  <div className="w-full h-px bg-border/30" />
+                </div>
+              </SortableItem>
             )
           }
 
           const text = isTodo ? (saved as Todo).title : (saved as Title).text
 
           return (
-            <div
-              key={saved.id}
-              className={`group flex items-center gap-2 rounded-md border border-transparent px-3 transition-colors ${
-                isTitle ? "py-2 mt-4 first:mt-0" : "py-1 hover:bg-muted/30"
-              }`}
-            >
+            <SortableItem key={saved.id} id={saved.id}>
+              <div
+                className={`group flex items-center gap-2 rounded-md border border-transparent px-3 transition-colors ${
+                  isTitle ? "py-2 mt-4 first:mt-0" : "py-1 hover:bg-muted/30"
+                }`}
+              >
               {todo && (
                 <Checkbox
                   checked={todo.completed}
@@ -383,7 +483,7 @@ export function TodoTextEditor({
               />
 
               {todo && todo.aiProcessingStatus && (todo.aiProcessingStatus === "processing" || todo.aiProcessingStatus === "pending") && (
-                <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                <SpinnerIcon className="h-4 w-4 animate-spin text-muted-foreground" weight="bold" />
               )}
 
               {todo && showMetadata && (
@@ -395,7 +495,7 @@ export function TodoTextEditor({
                   )}
                   {todo.dueDate && (
                     <Badge variant="secondary" className="cursor-pointer gap-1">
-                      <Calendar className="h-3 w-3" />
+                      <CalendarBlankIcon className="h-3 w-3" weight="fill" />
                       {formatDueDate(todo.dueDate)}
                     </Badge>
                   )}
@@ -406,7 +506,8 @@ export function TodoTextEditor({
                   )}
                 </div>
               )}
-            </div>
+              </div>
+            </SortableItem>
           )
         } else {
           // Draft
@@ -420,12 +521,6 @@ export function TodoTextEditor({
                 isTitle ? "py-2" : "py-1 hover:bg-muted/30"
               }`}
             >
-              {isTitle && (
-                <div className="w-5 shrink-0 text-center text-xs text-muted-foreground">
-                  #
-                </div>
-              )}
-
               <input
                 ref={(el) => {
                   inputRefs.current[draft.id] = el
@@ -448,6 +543,8 @@ export function TodoTextEditor({
           )
         }
       })}
-    </div>
+        </div>
+      </SortableContext>
+    </DndContext>
   )
 }

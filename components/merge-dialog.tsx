@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Calendar } from "lucide-react"
+import { CalendarBlankIcon } from "@phosphor-icons/react"
 import {
   Dialog,
   DialogContent,
@@ -127,7 +127,7 @@ export function MergeDialog({ open, onOpenChange, groups, todos, onMerge }: Merg
                             )}
                             {task.dueDate && (
                               <Badge variant="secondary" className="gap-1">
-                                <Calendar className="h-3 w-3" />
+                                <CalendarBlankIcon className="h-3 w-3" weight="fill" />
                                 {formatDueDate(task.dueDate)}
                               </Badge>
                             )}
@@ -157,7 +157,7 @@ export function MergeDialog({ open, onOpenChange, groups, todos, onMerge }: Merg
                         )}
                         {group.suggestedMerge.dueDate && (
                           <Badge variant="secondary" className="gap-1">
-                            <Calendar className="h-3 w-3" />
+                            <CalendarBlankIcon className="h-3 w-3" weight="fill" />
                             {formatDueDate(group.suggestedMerge.dueDate)}
                           </Badge>
                         )}

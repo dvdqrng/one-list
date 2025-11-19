@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Card } from "@/components/ui/card"
-import { ArrowRight, Loader2, CheckCircle2, Mic, MicOff, XCircle, AlertTriangle, X } from "lucide-react"
+import { ArrowRightIcon, SpinnerIcon, CheckCircleIcon, MicrophoneIcon, MicrophoneSlashIcon, XCircleIcon, WarningIcon, XIcon } from "@phosphor-icons/react"
 import { processTodoText } from "@/lib/process-todos"
 import type { Todo } from "@/lib/types"
 
@@ -301,7 +301,7 @@ export function TodoInput({ existingTodos, onAddTodos, onUpdateTodo, isProcessin
                 onClick={toggleVoiceInput}
                 disabled={isProcessing}
               >
-                {isListening ? <MicOff className="h-1.5 w-1.5" /> : <Mic className="h-1.5 w-1.5" />}
+                {isListening ? <MicrophoneSlashIcon className="h-1.5 w-1.5" weight="fill" /> : <MicrophoneIcon className="h-1.5 w-1.5" weight="fill" />}
               </Button>
             )}
             <Button
@@ -311,9 +311,9 @@ export function TodoInput({ existingTodos, onAddTodos, onUpdateTodo, isProcessin
               className="h-7 w-7 rounded-full"
             >
               {isProcessing ? (
-                <Loader2 className="h-1.5 w-1.5 animate-spin" />
+                <SpinnerIcon className="h-1.5 w-1.5 animate-spin" weight="bold" />
               ) : (
-                <ArrowRight className="h-1.5 w-1.5" />
+                <ArrowRightIcon className="h-1.5 w-1.5" weight="bold" />
               )}
             </Button>
           </div>
@@ -328,9 +328,9 @@ export function TodoInput({ existingTodos, onAddTodos, onUpdateTodo, isProcessin
                       : "text-destructive font-medium flex items-center gap-1.5 text-sm"
                 }
               >
-                {feedback.type === "success" && <CheckCircle2 className="h-3.5 w-3.5" />}
-                {feedback.type === "timeout" && <AlertTriangle className="h-3.5 w-3.5" />}
-                {feedback.type === "error" && <XCircle className="h-3.5 w-3.5" />}
+                {feedback.type === "success" && <CheckCircleIcon className="h-3.5 w-3.5" weight="fill" />}
+                {feedback.type === "timeout" && <WarningIcon className="h-3.5 w-3.5" weight="fill" />}
+                {feedback.type === "error" && <XCircleIcon className="h-3.5 w-3.5" weight="fill" />}
                 {feedback.message}
               </span>
             </div>
