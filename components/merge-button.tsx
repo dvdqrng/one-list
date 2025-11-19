@@ -33,16 +33,16 @@ export function MergeButton({ todos, onMergeGroupsFound }: MergeButtonProps) {
       size="sm"
       onClick={handleClick}
       disabled={isSearching || todos.length < 2}
-      className="gap-2"
+      className="gap-1 h-6 text-xs px-1.5"
     >
       {isSearching ? (
         <>
-          <Loader2 className="h-4 w-4 animate-spin" />
+          <Loader2 className="h-2 w-2 animate-spin fill-current" />
           Finding similar tasks...
         </>
       ) : (
         <>
-          <GitMerge className="h-4 w-4" />
+          <GitMerge className="h-2 w-2 fill-current" />
           Find Similar Tasks
         </>
       )}

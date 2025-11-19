@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Card } from "@/components/ui/card"
-import { Sparkles, Loader2, CheckCircle2, Mic, MicOff, XCircle, AlertTriangle } from "lucide-react"
+import { ArrowRight, Loader2, CheckCircle2, Mic, MicOff, XCircle, AlertTriangle, X } from "lucide-react"
 import { processTodoText } from "@/lib/process-todos"
 import type { Todo } from "@/lib/types"
 
@@ -14,9 +14,11 @@ interface TodoInputProps {
   onUpdateTodo: (id: string, updates: Partial<Todo>) => void
   isProcessing: boolean
   setIsProcessing: (processing: boolean) => void
+  isVisible: boolean
+  onToggleVisibility: () => void
 }
 
-export function TodoInput({ existingTodos, onAddTodos, onUpdateTodo, isProcessing, setIsProcessing }: TodoInputProps) {
+export function TodoInput({ existingTodos, onAddTodos, onUpdateTodo, isProcessing, setIsProcessing, isVisible, onToggleVisibility }: TodoInputProps) {
   const [input, setInput] = useState("")
   const [feedback, setFeedback] = useState<{ message: string; type: "success" | "error" | "timeout" }>({
     message: "",
@@ -24,55 +26,153 @@ export function TodoInput({ existingTodos, onAddTodos, onUpdateTodo, isProcessin
   })
   const [isListening, setIsListening] = useState(false)
   const [isSupported, setIsSupported] = useState(false)
-  const recognitionRef = useRef<any>(null)
+  const [audioLevel, setAudioLevel] = useState(0)
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
+  const audioChunksRef = useRef<Blob[]>([])
+  const audioContextRef = useRef<AudioContext | null>(null)
+  const analyserRef = useRef<AnalyserNode | null>(null)
+  const animationFrameRef = useRef<number | null>(null)
 
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
-      if (SpeechRecognition) {
-        setIsSupported(true)
-        const recognition = new SpeechRecognition()
-        recognition.continuous = false
-        recognition.interimResults = false
-        recognition.lang = "en-US"
-
-        recognition.onresult = (event: any) => {
-          const transcript = event.results[0][0].transcript
-          setInput((prev) => (prev ? prev + " " + transcript : transcript))
-          setIsListening(false)
-        }
-
-        recognition.onerror = (event: any) => {
-          console.error("[v0] Speech recognition error:", event.error)
-          setIsListening(false)
-          setFeedback({ message: "Voice input failed. Please try again.", type: "error" })
-          setTimeout(() => setFeedback({ message: "", type: "success" }), 3000)
-        }
-
-        recognition.onend = () => {
-          setIsListening(false)
-        }
-
-        recognitionRef.current = recognition
-      }
+    // Check if MediaRecorder is supported
+    if (typeof window !== "undefined" && navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+      setIsSupported(true)
     }
 
     return () => {
-      if (recognitionRef.current) {
-        recognitionRef.current.stop()
+      // Cleanup
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current)
+      }
+      if (audioContextRef.current) {
+        audioContextRef.current.close()
       }
     }
   }, [])
 
-  const toggleVoiceInput = () => {
-    if (!recognitionRef.current) return
+  const startAudioVisualization = (stream: MediaStream) => {
+    const audioContext = new AudioContext()
+    const analyser = audioContext.createAnalyser()
+    const source = audioContext.createMediaStreamSource(stream)
 
+    analyser.fftSize = 256
+    source.connect(analyser)
+
+    audioContextRef.current = audioContext
+    analyserRef.current = analyser
+
+    const dataArray = new Uint8Array(analyser.frequencyBinCount)
+
+    const updateAudioLevel = () => {
+      if (analyserRef.current) {
+        analyserRef.current.getByteFrequencyData(dataArray)
+        const average = dataArray.reduce((a, b) => a + b) / dataArray.length
+        setAudioLevel(average / 255) // Normalize to 0-1
+        animationFrameRef.current = requestAnimationFrame(updateAudioLevel)
+      }
+    }
+
+    updateAudioLevel()
+  }
+
+  const stopAudioVisualization = () => {
+    if (animationFrameRef.current) {
+      cancelAnimationFrame(animationFrameRef.current)
+    }
+    if (audioContextRef.current) {
+      audioContextRef.current.close()
+      audioContextRef.current = null
+    }
+    analyserRef.current = null
+    setAudioLevel(0)
+  }
+
+  const toggleVoiceInput = async () => {
     if (isListening) {
-      recognitionRef.current.stop()
+      // Stop recording
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
+        mediaRecorderRef.current.stop()
+      }
+      stopAudioVisualization()
       setIsListening(false)
     } else {
-      recognitionRef.current.start()
-      setIsListening(true)
+      // Start recording
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+        audioChunksRef.current = []
+
+        // Start audio visualization
+        startAudioVisualization(stream)
+
+        const mediaRecorder = new MediaRecorder(stream)
+        mediaRecorderRef.current = mediaRecorder
+
+        mediaRecorder.ondataavailable = (event) => {
+          if (event.data.size > 0) {
+            audioChunksRef.current.push(event.data)
+          }
+        }
+
+        mediaRecorder.onstop = async () => {
+          const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' })
+          stream.getTracks().forEach(track => track.stop())
+          stopAudioVisualization()
+
+          // Send to OpenAI Whisper
+          try {
+            console.log('[v0] Sending audio to transcribe, size:', audioBlob.size, 'bytes')
+
+            // Try Electron IPC first (production), fallback to API route (development)
+            if (typeof window !== 'undefined' && (window as any).electronDB?.transcribeAudio) {
+              console.log('[v0] Using Electron IPC for transcription')
+              const arrayBuffer = await audioBlob.arrayBuffer()
+              const data = await (window as any).electronDB.transcribeAudio(arrayBuffer)
+              console.log('[v0] Transcription result:', data)
+              if (data.text) {
+                setInput((prev) => (prev ? prev + " " + data.text : data.text))
+              }
+            } else {
+              console.log('[v0] Using API route for transcription (dev mode)')
+              const formData = new FormData()
+              formData.append('audio', audioBlob, 'recording.webm')
+
+              const response = await fetch('/api/transcribe', {
+                method: 'POST',
+                body: formData,
+              })
+
+              if (!response.ok) {
+                const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
+                console.error('[v0] Transcription API error:', errorData)
+                throw new Error(`Transcription failed: ${errorData.error || response.statusText}`)
+              }
+
+              const data = await response.json()
+              console.log('[v0] Transcription result:', data)
+              if (data.text) {
+                setInput((prev) => (prev ? prev + " " + data.text : data.text))
+              }
+            }
+          } catch (error) {
+            console.error('[v0] Transcription error:', error)
+            setFeedback({
+              message: error instanceof Error ? error.message : "Voice transcription failed. Please try again.",
+              type: "error"
+            })
+            setTimeout(() => setFeedback({ message: "", type: "success" }), 4000)
+          }
+        }
+
+        mediaRecorder.start()
+        setIsListening(true)
+      } catch (error) {
+        console.error('[v0] Microphone access error:', error)
+        setFeedback({
+          message: "Microphone access denied. Please allow microphone permissions.",
+          type: "error"
+        })
+        setTimeout(() => setFeedback({ message: "", type: "success" }), 4000)
+      }
     }
   }
 
@@ -147,73 +247,97 @@ export function TodoInput({ existingTodos, onAddTodos, onUpdateTodo, isProcessin
     }
   }
 
+  if (!isVisible) return null
+
+  // Calculate size based on audio level (base size + dynamic scaling)
+  const baseSize = 600
+  const dynamicSize = baseSize + (audioLevel * 800)
+
   return (
-    <div className="fixed bottom-0 left-0 right-0 bg-background border-t shadow-lg z-50">
-      <div className="mx-auto max-w-7xl px-4 md:px-8 py-4">
-        <div className="flex items-center gap-3">
-          <div className="relative flex-1">
-            <Textarea
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              placeholder={
-                isListening ? "Listening... speak now!" : "Type or speak naturally... I'll understand what you mean!"
+    <>
+      {/* Audio visualization - pulsating circle */}
+      {isListening && (
+        <div className="fixed bottom-0 left-0 right-0 pointer-events-none z-40 flex justify-center">
+          <div
+            className="rounded-full animate-pulse"
+            style={{
+              width: `${dynamicSize}px`,
+              height: `${dynamicSize}px`,
+              transform: `translateY(50%) scale(${1 + audioLevel * 0.2})`,
+              background: `radial-gradient(circle, hsl(210 100% 50% / ${0.8 + audioLevel * 0.2}) 0%, hsl(210 100% 50% / ${0.4 + audioLevel * 0.4}) 50%, hsl(210 100% 50% / 0) 100%)`,
+              filter: `blur(${20 + audioLevel * 30}px)`,
+              flexShrink: 0,
+              transition: 'transform 50ms ease-out, filter 50ms ease-out',
+            }}
+          />
+        </div>
+      )}
+
+      <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 w-full max-w-4xl px-4">
+      <div className="flex items-center gap-2 bg-background border rounded-full shadow-lg px-4 py-2">
+        <div className="relative flex-1 flex items-center">
+          <Textarea
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            placeholder={
+              isListening ? "Listening... speak now!" : "Type or speak naturally... I'll understand what you mean!"
+            }
+            className={`w-full resize-none pr-20 border-0 bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 min-h-0 px-0 py-1.5 leading-normal text-sm ${isListening ? "ring-2 ring-primary rounded-full" : ""}`}
+            rows={1}
+            disabled={isProcessing || isListening}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                handleSubmit()
               }
-              className={`min-h-[60px] resize-none pr-12 ${isListening ? "ring-2 ring-primary" : ""}`}
-              disabled={isProcessing || isListening}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-                  handleSubmit()
-                }
-              }}
-            />
+            }}
+          />
+          <div className="absolute right-1 flex items-center gap-1">
             {isSupported && (
               <Button
                 type="button"
                 size="icon"
                 variant={isListening ? "default" : "ghost"}
-                className={`absolute right-2 top-2 ${isListening ? "animate-pulse" : ""}`}
+                className={`h-7 w-7 rounded-full ${isListening ? "animate-pulse" : ""}`}
                 onClick={toggleVoiceInput}
                 disabled={isProcessing}
               >
-                {isListening ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
+                {isListening ? <MicOff className="h-1.5 w-1.5" /> : <Mic className="h-1.5 w-1.5" />}
               </Button>
             )}
-          </div>
-
-          <Button onClick={handleSubmit} disabled={!input.trim() || isProcessing} className="gap-2 shrink-0">
-            {isProcessing ? (
-              <>
-                <Loader2 className="h-4 w-4 animate-spin" />
-                <span className="hidden md:inline">Processing...</span>
-              </>
-            ) : (
-              <>
-                <Sparkles className="h-4 w-4" />
-                <span className="hidden md:inline">Process</span>
-              </>
-            )}
-          </Button>
-        </div>
-
-        {feedback.message && (
-          <div className="mt-2 text-sm">
-            <span
-              className={
-                feedback.type === "success"
-                  ? "text-primary font-medium flex items-center gap-1"
-                  : feedback.type === "timeout"
-                    ? "text-warning font-medium flex items-center gap-1"
-                    : "text-destructive font-medium flex items-center gap-1"
-              }
+            <Button
+              onClick={handleSubmit}
+              disabled={!input.trim() || isProcessing}
+              size="icon"
+              className="h-7 w-7 rounded-full"
             >
-              {feedback.type === "success" && <CheckCircle2 className="h-4 w-4" />}
-              {feedback.type === "timeout" && <AlertTriangle className="h-4 w-4" />}
-              {feedback.type === "error" && <XCircle className="h-4 w-4" />}
-              {feedback.message}
-            </span>
+              {isProcessing ? (
+                <Loader2 className="h-1.5 w-1.5 animate-spin" />
+              ) : (
+                <ArrowRight className="h-1.5 w-1.5" />
+              )}
+            </Button>
           </div>
-        )}
+          {feedback.message && (
+            <div className="absolute -top-12 left-0 right-0 px-4 py-2 bg-background border rounded-full shadow-lg">
+              <span
+                className={
+                  feedback.type === "success"
+                    ? "text-primary font-medium flex items-center gap-1.5 text-sm"
+                    : feedback.type === "timeout"
+                      ? "text-warning font-medium flex items-center gap-1.5 text-sm"
+                      : "text-destructive font-medium flex items-center gap-1.5 text-sm"
+                }
+              >
+                {feedback.type === "success" && <CheckCircle2 className="h-3.5 w-3.5" />}
+                {feedback.type === "timeout" && <AlertTriangle className="h-3.5 w-3.5" />}
+                {feedback.type === "error" && <XCircle className="h-3.5 w-3.5" />}
+                {feedback.message}
+              </span>
+            </div>
+          )}
+        </div>
       </div>
     </div>
+    </>
   )
 }

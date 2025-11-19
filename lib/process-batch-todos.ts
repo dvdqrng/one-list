@@ -1,7 +1,7 @@
 "use server"
 
 import { generateObject } from "ai"
-import { openai } from "@ai-sdk/openai"
+import { createOpenAI } from "@ai-sdk/openai"
 import { z } from "zod"
 
 const TodoItemSchema = z.object({
@@ -40,6 +40,25 @@ export async function processBatchTodos(
   const todayDate = new Date().toISOString().split("T")[0]
 
   try {
+    // Get API key from environment
+    const apiKey = process.env.NEXT_PUBLIC_OPENAI_API_KEY
+
+    console.log('Environment check:', {
+      hasKey: !!apiKey,
+      keyLength: apiKey?.length,
+      keyStart: apiKey?.substring(0, 7)
+    })
+
+    if (!apiKey || apiKey === 'undefined') {
+      console.error('All OPENAI env vars:', Object.keys(process.env).filter(k => k.includes('OPENAI')))
+      throw new Error('OpenAI API key is not configured. Please add NEXT_PUBLIC_OPENAI_API_KEY to .env.local')
+    }
+
+    // Create OpenAI instance with API key
+    const openai = createOpenAI({
+      apiKey: apiKey,
+    })
+
     const { object } = await generateObject({
       model: openai("gpt-4o-mini"),
       schema: BatchProcessResultSchema,

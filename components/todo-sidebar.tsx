@@ -11,12 +11,10 @@ import { cn } from "@/lib/utils"
 interface TodoSidebarProps {
   selectedTodo: Todo | undefined
   onUpdate: (id: string, updates: Partial<Todo>) => void
-  showAiInput: boolean
-  aiInputSection: React.ReactNode
 }
 
-export function TodoSidebar({ selectedTodo, showAiInput, aiInputSection }: TodoSidebarProps) {
-  const [isCollapsed, setIsCollapsed] = useState(false)
+export function TodoSidebar({ selectedTodo }: TodoSidebarProps) {
+  const [isCollapsed, setIsCollapsed] = useState(true)
 
   if (isCollapsed) {
     return (
@@ -60,11 +58,6 @@ export function TodoSidebar({ selectedTodo, showAiInput, aiInputSection }: TodoS
             </div>
           </div>
         </div>
-        {showAiInput && (
-          <div className="border-t">
-            {aiInputSection}
-          </div>
-        )}
       </div>
     )
   }
@@ -137,11 +130,6 @@ export function TodoSidebar({ selectedTodo, showAiInput, aiInputSection }: TodoS
           </div>
         </div>
       </div>
-      {showAiInput && (
-        <div className="border-t">
-          {aiInputSection}
-        </div>
-      )}
     </div>
   )
 }

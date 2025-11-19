@@ -1,9 +1,14 @@
 "use server"
 
 import { generateObject } from "ai"
-import { openai } from "@ai-sdk/openai"
+import { createOpenAI } from "@ai-sdk/openai"
 import { z } from "zod"
 import type { Todo, ProcessResult } from "./types"
+
+// Create OpenAI instance with API key
+const openai = createOpenAI({
+  apiKey: process.env.NEXT_PUBLIC_OPENAI_API_KEY || '',
+})
 
 const TodoSchema = z.object({
   title: z.string().describe("A concise one-line task title (e.g., 'Buy milk', 'Call dentist', 'Finish report')"),
@@ -38,11 +43,22 @@ export async function processTodoText(input: string, existingTodos: Todo[]): Pro
     model: openai("gpt-4o-mini"),
     schema: ProcessResultSchema,
     prompt: `You are a smart todo assistant. Analyze the user's input and determine if they want to:
-1. Create new tasks
+1. Create new tasks (IMPORTANT: A SINGLE INPUT CAN CONTAIN MULTIPLE SEPARATE TASKS!)
 2. Update existing tasks (if similar tasks exist)
 3. Mark tasks as complete/incomplete
 
-IMPORTANT: Extract a clean, concise one-line title (e.g., "Buy milk", "Call dentist") and put ALL other details, context, and notes in the details field.
+MULTIPLE TASKS FROM SINGLE INPUT:
+- Look for multiple distinct tasks separated by commas, "and", "also", line breaks, or natural separators
+- Each distinct action/task should become its own separate todo item
+- Examples:
+  * "Buy milk and call dentist" → 2 separate tasks
+  * "Finish report, schedule meeting, send email" → 3 separate tasks
+  * "Need to buy groceries and also pick up dry cleaning" → 2 separate tasks
+  * "Write documentation" → 1 task (only one action mentioned)
+
+TASK FORMATTING:
+- Extract a clean, concise one-line title (e.g., "Buy milk", "Call dentist")
+- Put ALL other details, context, and notes in the details field
 
 DEFAULT VALUES (use these when no specific information is provided):
 - If NO priority is mentioned or inferred → set priority to "low"

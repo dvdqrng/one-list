@@ -3,7 +3,17 @@
     "allow": [
       "Bash(pnpm install)",
       "Bash(pnpm dev:*)",
-      "Bash(pnpm add:*)"
+      "Bash(pnpm add:*)",
+      "Bash(lsof:*)",
+      "Bash(curl:*)",
+      "Bash(ps:*)",
+      "Bash(timeout 5 curl:*)",
+      "Bash(kill:*)",
+      "Bash(npm run dev:*)",
+      "Bash(npm install:*)",
+      "Bash(npm run build:electron:*)",
+      "Bash(npm run:*)",
+      "Bash(pkill:*)"
     ],
     "deny": [],
     "ask": []
