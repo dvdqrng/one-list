@@ -60,6 +60,35 @@ export interface ElectronAPI {
   // Transcription
   transcribeAudio: (audioBuffer: ArrayBuffer) => Promise<{ text: string }>;
 
+  // AI Processing
+  processTodoText: (input: string, existingTodos: Todo[]) => Promise<{
+    newTodos: Todo[];
+    updates: Array<{ id: string; updates: Partial<Todo> }>;
+  }>;
+  processBatchTodos: (inputs: Array<{ index: number; text: string }>) => Promise<Array<{
+    index: number;
+    title: string;
+    details?: string;
+    priority?: 'low' | 'medium' | 'high';
+    dueDate?: string;
+    category?: string;
+  }>>;
+  findSimilarTasks: (todos: Todo[]) => Promise<{
+    groups: Array<{
+      taskIds: string[];
+      primaryTaskId: string;
+      similarityReason: string;
+      confidenceScore: number;
+      suggestedMerge: {
+        title: string;
+        details?: string;
+        priority?: 'low' | 'medium' | 'high';
+        dueDate?: string;
+        category?: string;
+      };
+    }>;
+  }>;
+
   // Auto-updates
   checkForUpdates?: () => Promise<any>;
   downloadUpdate?: () => Promise<any>;

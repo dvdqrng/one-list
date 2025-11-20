@@ -185,17 +185,29 @@ export function TodoInput({ existingTodos, onAddTodos, onUpdateTodo, isProcessin
       // Note: For bulk processing via TodoInput, we still call the AI immediately
       // because it analyzes the whole input and determines new todos vs updates
       // This is different from TodoListInput which creates individual todos
-      const response = await fetch('/api/process-todo-text', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ input, existingTodos })
-      })
 
-      if (!response.ok) {
-        throw new Error('Failed to process todo text')
+      let result: ProcessResult;
+
+      // Use Electron IPC if available
+      if (typeof window !== 'undefined' && (window as any).electronDB?.processTodoText) {
+        console.log('[v0] Using Electron IPC for todo processing')
+        result = await (window as any).electronDB.processTodoText(input, existingTodos)
+      } else {
+        // Fallback to API route for development/web
+        console.log('[v0] Using API route for todo processing (dev mode)')
+        const response = await fetch('/api/process-todo-text', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ input, existingTodos })
+        })
+
+        if (!response.ok) {
+          throw new Error('Failed to process todo text')
+        }
+
+        result = await response.json()
       }
 
-      const result: ProcessResult = await response.json()
       console.log("[v0] Processing result:", result)
 
       // Handle new todos - these come from AI already processed

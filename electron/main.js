@@ -4,6 +4,27 @@ const fs = require('fs');
 const initSqlJs = require('sql.js');
 const { autoUpdater } = require('electron-updater');
 
+// Import AI processing functions
+// Note: These will be loaded at runtime, after Next.js build
+let processTodoText, processBatchTodos, findSimilarTasks;
+
+// Lazy load AI functions to avoid module resolution issues at startup
+async function loadAIFunctions() {
+  try {
+    const processTodosModule = await import('../lib/process-todos.ts');
+    const processBatchTodosModule = await import('../lib/process-batch-todos.ts');
+    const findSimilarTasksModule = await import('../lib/find-similar-tasks.ts');
+
+    processTodoText = processTodosModule.processTodoText;
+    processBatchTodos = processBatchTodosModule.processBatchTodos;
+    findSimilarTasks = findSimilarTasksModule.findSimilarTasks;
+
+    console.log('AI functions loaded successfully');
+  } catch (error) {
+    console.error('Failed to load AI functions:', error);
+  }
+}
+
 let mainWindow;
 let db;
 let SQL;
@@ -250,6 +271,7 @@ app.whenReady().then(async () => {
   console.log('========================================');
 
   await initDatabase();
+  await loadAIFunctions();
   createWindow();
 
   // Check for updates in production
@@ -635,6 +657,50 @@ ipcMain.handle('transcribe:audio', async (event, audioBuffer) => {
     return { text: data.text };
   } catch (error) {
     console.error('Transcription error:', error);
+    throw error;
+  }
+});
+
+// AI Processing - Process todo text
+ipcMain.handle('ai:process-todo-text', async (event, input, existingTodos) => {
+  try {
+    if (!processTodoText) {
+      throw new Error('AI functions not loaded yet');
+    }
+    return await processTodoText(input, existingTodos);
+  } catch (error) {
+    console.error('Failed to process todo text:', error);
+    throw error;
+  }
+});
+
+// AI Processing - Process batch todos
+ipcMain.handle('ai:process-batch-todos', async (event, inputs) => {
+  try {
+    if (!processBatchTodos) {
+      throw new Error('AI functions not loaded yet');
+    }
+    const results = await processBatchTodos(inputs);
+    // Convert Map to array for IPC
+    return Array.from(results.entries()).map(([index, result]) => ({
+      index,
+      ...result
+    }));
+  } catch (error) {
+    console.error('Failed to process batch todos:', error);
+    throw error;
+  }
+});
+
+// AI Processing - Find similar tasks
+ipcMain.handle('ai:find-similar-tasks', async (event, todos) => {
+  try {
+    if (!findSimilarTasks) {
+      throw new Error('AI functions not loaded yet');
+    }
+    return await findSimilarTasks(todos);
+  } catch (error) {
+    console.error('Failed to find similar tasks:', error);
     throw error;
   }
 });

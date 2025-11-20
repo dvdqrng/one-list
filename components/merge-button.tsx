@@ -18,17 +18,28 @@ export function MergeButton({ todos, onMergeGroupsFound }: MergeButtonProps) {
     setIsSearching(true)
 
     try {
-      const response = await fetch('/api/find-similar-tasks', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ todos })
-      })
+      let result: { groups: SimilarTaskGroup[] };
 
-      if (!response.ok) {
-        throw new Error('Failed to find similar tasks')
+      // Use Electron IPC if available
+      if (typeof window !== 'undefined' && (window as any).electronDB?.findSimilarTasks) {
+        console.log('[v0] Using Electron IPC for finding similar tasks')
+        result = await (window as any).electronDB.findSimilarTasks(todos)
+      } else {
+        // Fallback to API route for development/web
+        console.log('[v0] Using API route for finding similar tasks (dev mode)')
+        const response = await fetch('/api/find-similar-tasks', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ todos })
+        })
+
+        if (!response.ok) {
+          throw new Error('Failed to find similar tasks')
+        }
+
+        result = await response.json()
       }
 
-      const result: { groups: SimilarTaskGroup[] } = await response.json()
       onMergeGroupsFound(result.groups)
     } catch (error) {
       console.error("Error finding similar tasks:", error)

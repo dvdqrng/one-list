@@ -1,8 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // Only use static export for Electron builds, not for Vercel
-  // Electron builds set ELECTRON_BUILD=true environment variable
-  ...(process.env.ELECTRON_BUILD === 'true' && { output: 'export' }),
+  // Always use static export for Electron-only build
+  output: 'export',
   typescript: {
     ignoreBuildErrors: true,
   },
