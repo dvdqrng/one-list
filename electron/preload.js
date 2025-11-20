@@ -78,6 +78,29 @@ const electronAPI = {
     console.log('transcribeAudio called, buffer size:', audioBuffer.byteLength);
     return ipcRenderer.invoke('transcribe:audio', audioBuffer);
   },
+
+  // Auto-updates
+  checkForUpdates: () => {
+    console.log('checkForUpdates called');
+    return ipcRenderer.invoke('check-for-updates');
+  },
+  downloadUpdate: () => {
+    console.log('downloadUpdate called');
+    return ipcRenderer.invoke('download-update');
+  },
+  installUpdate: () => {
+    console.log('installUpdate called');
+    return ipcRenderer.invoke('install-update');
+  },
+  onUpdateAvailable: (callback) => {
+    ipcRenderer.on('update-available', (event, info) => callback(info));
+  },
+  onDownloadProgress: (callback) => {
+    ipcRenderer.on('download-progress', (event, progress) => callback(progress));
+  },
+  onUpdateDownloaded: (callback) => {
+    ipcRenderer.on('update-downloaded', (event, info) => callback(info));
+  },
 };
 
 try {

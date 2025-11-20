@@ -2,6 +2,7 @@ const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const initSqlJs = require('sql.js');
+const { autoUpdater } = require('electron-updater');
 
 let mainWindow;
 let db;
@@ -74,6 +75,69 @@ function saveDatabase() {
     console.error('Failed to save database:', error);
   }
 }
+
+// ========== Auto-Updater Configuration ==========
+
+// Configure auto-updater
+autoUpdater.autoDownload = false; // Don't auto-download, ask user first
+autoUpdater.autoInstallOnAppQuit = true; // Install when app quits
+
+// Auto-updater event handlers
+autoUpdater.on('checking-for-update', () => {
+  console.log('Checking for updates...');
+});
+
+autoUpdater.on('update-available', (info) => {
+  console.log('Update available:', info.version);
+  if (mainWindow) {
+    mainWindow.webContents.send('update-available', info);
+  }
+});
+
+autoUpdater.on('update-not-available', (info) => {
+  console.log('No updates available');
+});
+
+autoUpdater.on('error', (err) => {
+  console.error('Auto-updater error:', err);
+});
+
+autoUpdater.on('download-progress', (progressObj) => {
+  console.log(`Download progress: ${progressObj.percent}%`);
+  if (mainWindow) {
+    mainWindow.webContents.send('download-progress', progressObj);
+  }
+});
+
+autoUpdater.on('update-downloaded', (info) => {
+  console.log('Update downloaded:', info.version);
+  if (mainWindow) {
+    mainWindow.webContents.send('update-downloaded', info);
+  }
+});
+
+// IPC handlers for update actions
+ipcMain.handle('check-for-updates', async () => {
+  try {
+    return await autoUpdater.checkForUpdates();
+  } catch (error) {
+    console.error('Failed to check for updates:', error);
+    return null;
+  }
+});
+
+ipcMain.handle('download-update', async () => {
+  try {
+    return await autoUpdater.downloadUpdate();
+  } catch (error) {
+    console.error('Failed to download update:', error);
+    throw error;
+  }
+});
+
+ipcMain.handle('install-update', () => {
+  autoUpdater.quitAndInstall();
+});
 
 // Create main window
 function createWindow() {
@@ -187,6 +251,13 @@ app.whenReady().then(async () => {
 
   await initDatabase();
   createWindow();
+
+  // Check for updates in production
+  if (process.env.NODE_ENV !== 'development') {
+    setTimeout(() => {
+      autoUpdater.checkForUpdates();
+    }, 3000); // Check after 3 seconds to let the app fully load
+  }
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {

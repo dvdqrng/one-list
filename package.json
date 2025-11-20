@@ -10,6 +10,9 @@
     "start": "next start",
     "electron:dev": "unset ELECTRON_RUN_AS_NODE && NODE_ENV=development electron .",
     "electron:build": "next build && electron-builder",
+    "electron:build:mac": "next build && electron-builder --mac",
+    "electron:build:win": "next build && electron-builder --win",
+    "electron:build:linux": "next build && electron-builder --linux",
     "export": "next build && next export",
     "dev:all": "concurrently \"npm run dev\" \"wait-on http://localhost:3000 && npm run electron:dev\""
   },
@@ -44,6 +47,11 @@
         "AppImage",
         "deb"
       ]
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "dvdqrng",
+      "repo": "v0-intelligent-todo-app"
     }
   },
   "dependencies": {
@@ -87,6 +95,7 @@
     "clsx": "^2.1.1",
     "cmdk": "1.0.4",
     "date-fns": "4.1.0",
+    "electron-updater": "^6.6.2",
     "embla-carousel-react": "8.5.1",
     "form-data": "^4.0.5",
     "input-otp": "1.4.1",
