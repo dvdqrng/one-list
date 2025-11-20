@@ -40,14 +40,14 @@ Since the app is **not code-signed**, macOS will show a security warning on firs
 
 ### Build for your current platform (macOS):
 ```bash
-npm run electron:build:mac
+pnpm electron:build:mac
 ```
 
 ### Build for all platforms:
 ```bash
-npm run electron:build        # Builds macOS, Windows, Linux
-npm run electron:build:win    # Windows only
-npm run electron:build:linux  # Linux only
+pnpm electron:build        # Builds macOS, Windows, Linux
+pnpm electron:build:win    # Windows only
+pnpm electron:build:linux  # Linux only
 ```
 
 ## Distribution Methods

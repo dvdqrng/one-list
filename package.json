@@ -3,6 +3,11 @@
   "version": "0.1.0",
   "private": true,
   "main": "electron/main.js",
+  "packageManager": "pnpm@10.20.0",
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=9.0.0"
+  },
   "scripts": {
     "build": "next build",
     "dev": "next dev",
@@ -14,7 +19,7 @@
     "electron:build:win": "ELECTRON_BUILD=true next build && electron-builder --win",
     "electron:build:linux": "ELECTRON_BUILD=true next build && electron-builder --linux",
     "export": "next build && next export",
-    "dev:all": "concurrently \"npm run dev\" \"wait-on http://localhost:3000 && npm run electron:dev\""
+    "dev:all": "concurrently \"pnpm dev\" \"wait-on http://localhost:3000 && pnpm electron:dev\""
   },
   "build": {
     "appId": "com.noteslist.app",

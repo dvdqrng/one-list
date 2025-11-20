@@ -3,6 +3,10 @@
 # dependencies
 /node_modules
 
+# lock files (use pnpm only)
+package-lock.json
+yarn.lock
+
 # next.js
 /.next/
 /out/
