@@ -31,7 +31,8 @@
       "Bash(git commit -m \"$(cat <<''EOF''\nfeat: add electron distribution and auto-update support\n\n- Set up electron-builder with GitHub releases publishing\n- Add auto-update functionality with electron-updater\n- Create UpdateNotifier component for UI notifications\n- Add GitHub Actions workflow for automated builds\n- Fix Next.js config to support both Vercel and Electron builds\n- Update pnpm lockfile with electron-updater dependency\n- Add comprehensive distribution documentation\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")",
       "Bash(git push:*)",
       "Bash(git commit -m \"$(cat <<''EOF''\nfix: standardize on pnpm package manager\n\n- Remove package-lock.json (npm) to avoid conflicts\n- Add packageManager field to enforce pnpm@10.20.0\n- Add engines field to require Node >=20 and pnpm >=9\n- Update GitHub Actions workflow to use pnpm\n- Fix dev:all script to use pnpm instead of npm\n- Update DISTRIBUTION.md with pnpm commands\n- Add package-lock.json and yarn.lock to .gitignore\n- Create README-PACKAGE-MANAGER.md with usage guide\n\nThis fixes the confusion between npm and pnpm usage across the project.\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "Bash(pnpm electron:build:mac:*)"
     ],
     "deny": [],
     "ask": []
