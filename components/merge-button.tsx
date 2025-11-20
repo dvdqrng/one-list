@@ -3,7 +3,7 @@
 import { useState } from "react"
 import { IntersectIcon, SpinnerIcon } from "@phosphor-icons/react"
 import { Button } from "@/components/ui/button"
-import { findSimilarTasks, type SimilarTaskGroup } from "@/lib/find-similar-tasks"
+import type { SimilarTaskGroup } from "@/lib/find-similar-tasks"
 import type { Todo } from "@/lib/types"
 
 interface MergeButtonProps {
@@ -18,7 +18,17 @@ export function MergeButton({ todos, onMergeGroupsFound }: MergeButtonProps) {
     setIsSearching(true)
 
     try {
-      const result = await findSimilarTasks(todos)
+      const response = await fetch('/api/find-similar-tasks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ todos })
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to find similar tasks')
+      }
+
+      const result: { groups: SimilarTaskGroup[] } = await response.json()
       onMergeGroupsFound(result.groups)
     } catch (error) {
       console.error("Error finding similar tasks:", error)

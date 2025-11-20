@@ -24,7 +24,8 @@
       "Bash(echo:*)",
       "Bash(unset:*)",
       "Bash(pnpm remove:*)",
-      "Bash(cd:*)"
+      "Bash(cd:*)",
+      "Bash(pnpm run build:*)"
     ],
     "deny": [],
     "ask": []

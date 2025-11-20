@@ -5,8 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Card } from "@/components/ui/card"
 import { ArrowRightIcon, SpinnerIcon, CheckCircleIcon, MicrophoneIcon, MicrophoneSlashIcon, XCircleIcon, WarningIcon, XIcon } from "@phosphor-icons/react"
-import { processTodoText } from "@/lib/process-todos"
-import type { Todo } from "@/lib/types"
+import type { Todo, ProcessResult } from "@/lib/types"
 
 interface TodoInputProps {
   existingTodos: Todo[]
@@ -186,7 +185,17 @@ export function TodoInput({ existingTodos, onAddTodos, onUpdateTodo, isProcessin
       // Note: For bulk processing via TodoInput, we still call the AI immediately
       // because it analyzes the whole input and determines new todos vs updates
       // This is different from TodoListInput which creates individual todos
-      const result = await processTodoText(input, existingTodos)
+      const response = await fetch('/api/process-todo-text', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ input, existingTodos })
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to process todo text')
+      }
+
+      const result: ProcessResult = await response.json()
       console.log("[v0] Processing result:", result)
 
       // Handle new todos - these come from AI already processed

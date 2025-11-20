@@ -1,10 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  output: 'export',
-  distDir: 'out',
-  eslint: {
-    ignoreDuringBuilds: true,
-  },
+  // Note: Removed 'output: export' to enable API routes for Vercel deployment
+  // For Electron builds, the static files are still generated in .next/
   typescript: {
     ignoreBuildErrors: true,
   },
