@@ -9,6 +9,7 @@ export interface Todo {
   createdAt: string
   aiProcessingStatus?: "pending" | "processing" | "enhanced" | "failed"
   groupTitleId?: string // ID of the title this todo belongs to
+  indent?: number // Indentation level (0-3) for sub-tasks
 }
 
 export interface Title {
@@ -53,7 +54,18 @@ export function mergeBlockItems(
   titles: Title[],
   separators: Separator[]
 ): BlockItem[] {
-  return sortBlockItems([...todos, ...titles, ...separators])
+  const allItems = [...todos, ...titles, ...separators]
+  // Deduplicate by ID to prevent React key errors
+  const seen = new Set<string>()
+  const uniqueItems = allItems.filter(item => {
+    if (seen.has(item.id)) {
+      console.warn(`Duplicate item ID found: ${item.id}`)
+      return false
+    }
+    seen.add(item.id)
+    return true
+  })
+  return sortBlockItems(uniqueItems)
 }
 
 export interface TodoUpdate {
@@ -80,4 +92,39 @@ export interface QueueConfig {
   batchDelayMs: number
   maxRetries: number
   processingTimeoutMs: number
+}
+
+// ============================================
+// Changelog / Review Types
+// ============================================
+
+export type ChangeType = "add" | "update" | "delete" | "merge" | "complete" | "uncomplete"
+
+export interface ProposedChange {
+  id: string
+  type: ChangeType
+  // For "add": the new todo to create
+  newTodo?: Todo
+  // For "update"/"complete"/"uncomplete": the existing todo and proposed updates
+  existingTodo?: Todo
+  updates?: Partial<Todo>
+  // For "merge": group of todos being merged
+  mergeGroup?: {
+    sourceTodos: Todo[]
+    mergedResult: Todo
+    similarityReason: string
+    confidenceScore: number
+  }
+  // For "delete": the todo to delete
+  deleteTodo?: Todo
+  // AI reasoning for this change
+  reason?: string
+}
+
+export interface ChangelogSession {
+  id: string
+  source: "ai-input" | "merge-button" | "manual"
+  inputText?: string
+  changes: ProposedChange[]
+  createdAt: string
 }

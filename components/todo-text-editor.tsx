@@ -31,6 +31,7 @@ interface DraftBlock {
   id: string
   type: BlockType
   text: string
+  indent: number // 0-3
 }
 
 interface TodoTextEditorProps {
@@ -72,7 +73,8 @@ export function TodoTextEditor({
   const [drafts, setDrafts] = useState<DraftBlock[]>([{
     id: crypto.randomUUID(),
     type: "todo",
-    text: ""
+    text: "",
+    indent: 0
   }])
 
   const inputRefs = useRef<Record<string, HTMLInputElement | null>>({})
@@ -111,8 +113,8 @@ export function TodoTextEditor({
   }
 
   const handleKeyDown = (item: typeof allItems[number], index: number, e: React.KeyboardEvent<HTMLInputElement>) => {
-    // Tab - toggle between todo and title (draft only)
-    if (e.key === "Tab" && item.type === 'draft') {
+    // Option+Tab (Alt+Tab) - toggle between todo and title (draft only)
+    if (e.key === "Tab" && e.altKey && item.type === 'draft') {
       e.preventDefault()
       setDrafts(prev => prev.map(d =>
         d.id === item.item.id
@@ -120,6 +122,50 @@ export function TodoTextEditor({
           : d
       ))
       return
+    }
+
+    // Tab - increase indent (for todos and drafts, not titles)
+    if (e.key === "Tab" && !e.shiftKey && !e.altKey) {
+      const isTodoOrDraft = item.type === 'draft'
+        ? item.item.type === 'todo'
+        : 'completed' in item.item
+
+      if (isTodoOrDraft) {
+        e.preventDefault()
+        if (item.type === 'draft') {
+          setDrafts(prev => prev.map(d =>
+            d.id === item.item.id
+              ? { ...d, indent: Math.min(3, d.indent + 1) }
+              : d
+          ))
+        } else {
+          const todo = item.item as Todo
+          onUpdateTodo(todo.id, { indent: Math.min(3, (todo.indent ?? 0) + 1) })
+        }
+        return
+      }
+    }
+
+    // Shift+Tab - decrease indent (for todos and drafts, not titles)
+    if (e.key === "Tab" && e.shiftKey && !e.altKey) {
+      const isTodoOrDraft = item.type === 'draft'
+        ? item.item.type === 'todo'
+        : 'completed' in item.item
+
+      if (isTodoOrDraft) {
+        e.preventDefault()
+        if (item.type === 'draft') {
+          setDrafts(prev => prev.map(d =>
+            d.id === item.item.id
+              ? { ...d, indent: Math.max(0, d.indent - 1) }
+              : d
+          ))
+        } else {
+          const todo = item.item as Todo
+          onUpdateTodo(todo.id, { indent: Math.max(0, (todo.indent ?? 0) - 1) })
+        }
+        return
+      }
     }
 
     // Arrow Up
@@ -185,6 +231,7 @@ export function TodoTextEditor({
               createdAt: new Date().toISOString(),
               aiProcessingStatus: "pending",
               groupTitleId,
+              indent: draft.indent,
             }
             onAddTodo(newTodo)
 
@@ -211,11 +258,15 @@ export function TodoTextEditor({
         }
       }
 
-      // Add new draft below
+      // Add new draft below (inherit indent from current item)
+      const currentIndent = item.type === 'draft'
+        ? item.item.indent
+        : ('indent' in item.item ? (item.item as Todo).indent ?? 0 : 0)
       const newDraft: DraftBlock = {
         id: crypto.randomUUID(),
         type: "todo",
         text: "",
+        indent: currentIndent,
       }
 
       const draftIndex = item.type === 'draft'
@@ -325,6 +376,7 @@ export function TodoTextEditor({
                       id: crypto.randomUUID(),
                       type: "todo",
                       text: "",
+                      indent: 0,
                     }
                     setDrafts(prev => [...prev, newDraft])
                     setTimeout(() => {
@@ -341,9 +393,13 @@ export function TodoTextEditor({
           // Render todo
           if (isTodoItem) {
             const todo = saved as Todo
+            const indentLevel = todo.indent ?? 0
             return (
               <SortableItem key={todo.id} id={todo.id}>
-                <div className="group flex items-center gap-2 rounded-md border border-transparent px-3 py-1 hover:bg-muted/30 transition-colors">
+                <div
+                  className="group flex items-center gap-2 rounded-md border border-transparent px-3 py-1 hover:bg-muted/30 transition-colors"
+                  style={{ paddingLeft: `${12 + indentLevel * 24}px` }}
+                >
                   <Checkbox
                     checked={todo.completed}
                     onCheckedChange={() => onToggleTodo(todo.id)}
@@ -418,6 +474,7 @@ export function TodoTextEditor({
           // Draft
           const draft = item.item
           const isDraftTitle = draft.type === "title"
+          const indentLevel = isDraftTitle ? 0 : draft.indent
 
           return (
             <div
@@ -425,6 +482,7 @@ export function TodoTextEditor({
               className={`group flex items-center gap-2 rounded-md border border-transparent px-3 transition-colors ${
                 isDraftTitle ? "py-2" : "py-1 hover:bg-muted/30"
               }`}
+              style={{ paddingLeft: `${12 + indentLevel * 24}px` }}
             >
               <input
                 ref={(el) => { inputRefs.current[draft.id] = el }}
@@ -434,8 +492,8 @@ export function TodoTextEditor({
                 onKeyDown={(e) => handleKeyDown(item, index, e)}
                 placeholder={
                   isDraftTitle
-                    ? "Title (Tab to switch to todo)..."
-                    : "Type a task (Tab for title)..."
+                    ? "Title (⌥Tab to switch to todo)..."
+                    : "Type a task (⌥Tab for title)..."
                 }
                 className={`flex-1 bg-transparent outline-none placeholder:text-muted-foreground ${
                   isDraftTitle ? "text-lg font-semibold" : "text-sm"
