@@ -32,7 +32,10 @@
       "Bash(git push:*)",
       "Bash(git commit -m \"$(cat <<''EOF''\nfix: standardize on pnpm package manager\n\n- Remove package-lock.json (npm) to avoid conflicts\n- Add packageManager field to enforce pnpm@10.20.0\n- Add engines field to require Node >=20 and pnpm >=9\n- Update GitHub Actions workflow to use pnpm\n- Fix dev:all script to use pnpm instead of npm\n- Update DISTRIBUTION.md with pnpm commands\n- Add package-lock.json and yarn.lock to .gitignore\n- Create README-PACKAGE-MANAGER.md with usage guide\n\nThis fixes the confusion between npm and pnpm usage across the project.\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")",
       "Bash(git commit:*)",
-      "Bash(pnpm electron:build:mac:*)"
+      "Bash(pnpm electron:build:mac:*)",
+      "Bash(find:*)",
+      "Bash(npx tsc:*)",
+      "Bash(cd /Users/davidquiring/Documents/Documents\\ -\\ MacBook\\ Pro\\ von\\ David/GitHub/v0-intelligent-todo-app && npx shadcn@latest add sidebar breadcrumb -y:*)"
     ],
     "deny": [],
     "ask": []

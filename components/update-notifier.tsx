@@ -32,18 +32,15 @@ export function UpdateNotifier() {
 
     // Listen for update events
     window.electronDB.onUpdateAvailable?.((info: UpdateInfo) => {
-      console.log('Update available:', info);
       setUpdateInfo(info);
       setUpdateAvailable(true);
     });
 
     window.electronDB.onDownloadProgress?.((progress: DownloadProgress) => {
-      console.log('Download progress:', progress);
       setDownloadProgress(Math.round(progress.percent));
     });
 
-    window.electronDB.onUpdateDownloaded?.((info: UpdateInfo) => {
-      console.log('Update downloaded:', info);
+    window.electronDB.onUpdateDownloaded?.(() => {
       setDownloading(false);
       setUpdateReady(true);
     });

@@ -29,7 +29,31 @@ export function isTodo(block: BlockItem): block is Todo {
 }
 
 export function isTitle(block: BlockItem): block is Title {
-  return !("completed" in block)
+  return "text" in block && !("completed" in block)
+}
+
+export function isSeparator(block: BlockItem): block is Separator {
+  return !("completed" in block) && !("text" in block)
+}
+
+/**
+ * Sort block items by createdAt timestamp
+ */
+export function sortBlockItems(items: BlockItem[]): BlockItem[] {
+  return [...items].sort((a, b) =>
+    new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+  )
+}
+
+/**
+ * Merge todos, titles, and separators into a sorted array
+ */
+export function mergeBlockItems(
+  todos: Todo[],
+  titles: Title[],
+  separators: Separator[]
+): BlockItem[] {
+  return sortBlockItems([...todos, ...titles, ...separators])
 }
 
 export interface TodoUpdate {

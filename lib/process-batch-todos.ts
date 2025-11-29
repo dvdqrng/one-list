@@ -38,18 +38,11 @@ export async function processBatchTodos(
   const todayDate = new Date().toISOString().split("T")[0]
 
   try {
-    // Get API key from environment
-    const apiKey = process.env.NEXT_PUBLIC_OPENAI_API_KEY
-
-    console.log('Environment check:', {
-      hasKey: !!apiKey,
-      keyLength: apiKey?.length,
-      keyStart: apiKey?.substring(0, 7)
-    })
+    // Get API key from environment (prefer server-side key, fallback to public)
+    const apiKey = process.env.OPENAI_API_KEY || process.env.NEXT_PUBLIC_OPENAI_API_KEY
 
     if (!apiKey || apiKey === 'undefined') {
-      console.error('All OPENAI env vars:', Object.keys(process.env).filter(k => k.includes('OPENAI')))
-      throw new Error('OpenAI API key is not configured. Please add NEXT_PUBLIC_OPENAI_API_KEY to .env.local')
+      throw new Error('OpenAI API key is not configured. Please add OPENAI_API_KEY to .env.local')
     }
 
     // Create OpenAI instance with API key

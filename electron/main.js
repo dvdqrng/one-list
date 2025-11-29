@@ -389,6 +389,7 @@ ipcMain.handle('db:createTodos', (event, todos) => {
 
 ipcMain.handle('db:updateTodo', (event, id, updates) => {
   try {
+    console.log('[updateTodo] id:', id, 'updates:', updates);
     const fields = [];
     const params = [];
 
@@ -424,6 +425,10 @@ ipcMain.handle('db:updateTodo', (event, id, updates) => {
       fields.push('group_title_id = ?');
       params.push(updates.groupTitleId || null);
     }
+    if (updates.createdAt !== undefined) {
+      fields.push('created_at = ?');
+      params.push(updates.createdAt);
+    }
 
     const now = new Date().toISOString();
     fields.push('updated_at = ?');
@@ -435,6 +440,7 @@ ipcMain.handle('db:updateTodo', (event, id, updates) => {
     stmt.free();
 
     saveDatabase();
+    console.log('[updateTodo] Successfully updated todo:', id);
     return { id, ...updates };
   } catch (error) {
     console.error('Failed to update todo:', error);

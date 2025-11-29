@@ -22,11 +22,9 @@ export function MergeButton({ todos, onMergeGroupsFound }: MergeButtonProps) {
 
       // Use Electron IPC if available
       if (typeof window !== 'undefined' && (window as any).electronDB?.findSimilarTasks) {
-        console.log('[v0] Using Electron IPC for finding similar tasks')
         result = await (window as any).electronDB.findSimilarTasks(todos)
       } else {
         // Fallback to API route for development/web
-        console.log('[v0] Using API route for finding similar tasks (dev mode)')
         const response = await fetch('/api/find-similar-tasks', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -54,7 +52,7 @@ export function MergeButton({ todos, onMergeGroupsFound }: MergeButtonProps) {
       size="sm"
       onClick={handleClick}
       disabled={isSearching || todos.length < 2}
-      className="h-7 w-7 p-0"
+      className="h-6 w-6 p-0"
       title={isSearching ? "Finding similar tasks..." : "Find similar tasks"}
     >
       {isSearching ? (

@@ -3,10 +3,14 @@ import { createOpenAI } from "@ai-sdk/openai"
 import { z } from "zod"
 import type { Todo, ProcessResult } from "./types"
 
-// Create OpenAI instance with API key
-const openai = createOpenAI({
-  apiKey: process.env.NEXT_PUBLIC_OPENAI_API_KEY || '',
-})
+// Create OpenAI instance lazily to ensure env variables are loaded
+function getOpenAI() {
+  const apiKey = process.env.OPENAI_API_KEY || process.env.NEXT_PUBLIC_OPENAI_API_KEY
+  if (!apiKey) {
+    throw new Error("OpenAI API key is not configured. Please add OPENAI_API_KEY to .env.local")
+  }
+  return createOpenAI({ apiKey })
+}
 
 const TodoSchema = z.object({
   title: z.string().describe("A concise one-line task title (e.g., 'Buy milk', 'Call dentist', 'Finish report')"),
@@ -18,7 +22,7 @@ const TodoSchema = z.object({
 })
 
 const ProcessResultSchema = z.object({
-  newTodos: z.array(TodoSchema).describe("New tasks to create"),
+  newTodos: z.array(TodoSchema).default([]).describe("New tasks to create"),
   updates: z
     .array(
       z.object({
@@ -27,6 +31,7 @@ const ProcessResultSchema = z.object({
         reason: z.string().describe("Why this todo was matched"),
       }),
     )
+    .default([])
     .describe("Updates to existing tasks"),
 })
 
@@ -37,6 +42,7 @@ export async function processTodoText(input: string, existingTodos: Todo[]): Pro
     setTimeout(() => reject(new Error("Request timed out after 30 seconds")), 30000)
   })
 
+  const openai = getOpenAI()
   const generatePromise = generateObject({
     model: openai("gpt-4o-mini"),
     schema: ProcessResultSchema,

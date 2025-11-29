@@ -3,8 +3,7 @@
 import { useState, useEffect, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
-import { Card } from "@/components/ui/card"
-import { ArrowRightIcon, SpinnerIcon, CheckCircleIcon, MicrophoneIcon, MicrophoneSlashIcon, XCircleIcon, WarningIcon, XIcon } from "@phosphor-icons/react"
+import { ArrowRightIcon, SpinnerIcon, CheckCircleIcon, MicrophoneIcon, MicrophoneSlashIcon, XCircleIcon, WarningIcon } from "@phosphor-icons/react"
 import type { Todo, ProcessResult } from "@/lib/types"
 
 interface TodoInputProps {
@@ -34,7 +33,11 @@ export function TodoInput({ existingTodos, onAddTodos, onUpdateTodo, isProcessin
 
   useEffect(() => {
     // Check if MediaRecorder is supported
-    if (typeof window !== "undefined" && navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+    const hasMediaDevices = typeof window !== "undefined" &&
+      typeof navigator !== "undefined" &&
+      "mediaDevices" in navigator &&
+      navigator.mediaDevices !== null
+    if (hasMediaDevices) {
       setIsSupported(true)
     }
 
@@ -119,19 +122,14 @@ export function TodoInput({ existingTodos, onAddTodos, onUpdateTodo, isProcessin
 
           // Send to OpenAI Whisper
           try {
-            console.log('[v0] Sending audio to transcribe, size:', audioBlob.size, 'bytes')
-
             // Try Electron IPC first (production), fallback to API route (development)
             if (typeof window !== 'undefined' && (window as any).electronDB?.transcribeAudio) {
-              console.log('[v0] Using Electron IPC for transcription')
               const arrayBuffer = await audioBlob.arrayBuffer()
               const data = await (window as any).electronDB.transcribeAudio(arrayBuffer)
-              console.log('[v0] Transcription result:', data)
               if (data.text) {
                 setInput((prev) => (prev ? prev + " " + data.text : data.text))
               }
             } else {
-              console.log('[v0] Using API route for transcription (dev mode)')
               const formData = new FormData()
               formData.append('audio', audioBlob, 'recording.webm')
 
@@ -142,18 +140,16 @@ export function TodoInput({ existingTodos, onAddTodos, onUpdateTodo, isProcessin
 
               if (!response.ok) {
                 const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
-                console.error('[v0] Transcription API error:', errorData)
                 throw new Error(`Transcription failed: ${errorData.error || response.statusText}`)
               }
 
               const data = await response.json()
-              console.log('[v0] Transcription result:', data)
               if (data.text) {
                 setInput((prev) => (prev ? prev + " " + data.text : data.text))
               }
             }
           } catch (error) {
-            console.error('[v0] Transcription error:', error)
+            console.error('Transcription error:', error)
             setFeedback({
               message: error instanceof Error ? error.message : "Voice transcription failed. Please try again.",
               type: "error"
@@ -165,7 +161,7 @@ export function TodoInput({ existingTodos, onAddTodos, onUpdateTodo, isProcessin
         mediaRecorder.start()
         setIsListening(true)
       } catch (error) {
-        console.error('[v0] Microphone access error:', error)
+        console.error('Microphone access error:', error)
         setFeedback({
           message: "Microphone access denied. Please allow microphone permissions.",
           type: "error"
@@ -182,19 +178,14 @@ export function TodoInput({ existingTodos, onAddTodos, onUpdateTodo, isProcessin
     setFeedback({ message: "", type: "success" })
 
     try {
-      // Note: For bulk processing via TodoInput, we still call the AI immediately
-      // because it analyzes the whole input and determines new todos vs updates
-      // This is different from TodoListInput which creates individual todos
-
+      // Bulk processing: AI analyzes the whole input and determines new todos vs updates
       let result: ProcessResult;
 
       // Use Electron IPC if available
       if (typeof window !== 'undefined' && (window as any).electronDB?.processTodoText) {
-        console.log('[v0] Using Electron IPC for todo processing')
         result = await (window as any).electronDB.processTodoText(input, existingTodos)
       } else {
         // Fallback to API route for development/web
-        console.log('[v0] Using API route for todo processing (dev mode)')
         const response = await fetch('/api/process-todo-text', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -202,17 +193,15 @@ export function TodoInput({ existingTodos, onAddTodos, onUpdateTodo, isProcessin
         })
 
         if (!response.ok) {
-          throw new Error('Failed to process todo text')
+          const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
+          throw new Error(errorData.error || 'Failed to process todo text')
         }
 
         result = await response.json()
       }
 
-      console.log("[v0] Processing result:", result)
-
       // Handle new todos - these come from AI already processed
       if (result.newTodos.length > 0) {
-        console.log("[v0] Adding new todos:", result.newTodos)
         // Mark them as already enhanced since they came from AI
         const enhancedTodos = result.newTodos.map(todo => ({
           ...todo,
@@ -254,12 +243,13 @@ export function TodoInput({ existingTodos, onAddTodos, onUpdateTodo, isProcessin
       console.error("[v0] Error processing todos:", error)
 
       // Check if it's a timeout error
-      const isTimeout = error instanceof Error && error.message.includes("timed out")
+      const errorMessage = error instanceof Error ? error.message : "Unknown error"
+      const isTimeout = errorMessage.includes("timed out")
 
       setFeedback({
         message: isTimeout
           ? "Request timed out. The AI took too long to respond. Please try again."
-          : "Failed to process your request. Please check your connection and try again.",
+          : errorMessage || "Failed to process your request. Please check your connection and try again.",
         type: isTimeout ? "timeout" : "error"
       })
       setTimeout(() => setFeedback({ message: "", type: "success" }), 6000)

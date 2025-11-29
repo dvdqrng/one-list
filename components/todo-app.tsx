@@ -1,17 +1,18 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef, useCallback } from "react"
 import { TodoInput } from "./todo-input"
 import { TodoTextEditor } from "./todo-text-editor"
 import { MergeButton } from "./merge-button"
 import { MergeDialog } from "./merge-dialog"
-import { TodoList } from "./todo-list"
 import { TodoSidebar } from "./todo-sidebar"
 import { Button } from "./ui/button"
+import { ScrollArea } from "./ui/scroll-area"
+import { Separator as ShadcnSeparator } from "./ui/separator"
 import { StarIcon, LightningIcon, MoonIcon, SunIcon } from "@phosphor-icons/react"
 import { useTheme } from "next-themes"
 import { aiQueueManager } from "@/lib/ai-queue-manager"
-import { electronDB, isElectron } from "@/lib/electron/database"
+import { electronDB } from "@/lib/electron/database"
 import type { Todo, Title, Separator, BlockItem } from "@/lib/types"
 import type { SimilarTaskGroup } from "@/lib/find-similar-tasks"
 
@@ -23,50 +24,28 @@ export function TodoApp() {
   const [selectedTodoId, setSelectedTodoId] = useState<string | null>(null)
   const [mergeGroups, setMergeGroups] = useState<SimilarTaskGroup[]>([])
   const [showMergeDialog, setShowMergeDialog] = useState(false)
-  const [showMetadata, setShowMetadata] = useState(true)
-  const [showAiInput, setShowAiInput] = useState(true)
+  const [showMetadata, setShowMetadata] = useState(false)
+  const [showAiInput, setShowAiInput] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const { theme, setTheme } = useTheme()
+
+  // Refs for debouncing database writes
+  const todoUpdateTimers = useRef<Record<string, NodeJS.Timeout>>({})
+  const titleUpdateTimers = useRef<Record<string, NodeJS.Timeout>>({})
 
   // Load initial data from Electron database
   useEffect(() => {
     loadData()
   }, [])
 
-  // Set up queue manager callback
-  useEffect(() => {
-    aiQueueManager.setUpdateCallback((todoId, updates) => {
-      handleUpdateTodo(todoId, updates)
-    })
-  }, [])
-
   const loadData = async () => {
     try {
       setIsLoading(true)
-      console.log('Loading data... window.electronDB =', typeof window.electronDB)
-
-      // Wait for electronDB to be available (with retry logic)
-      const maxRetries = 10
-      let retries = 0
-      while (!window.electronDB && retries < maxRetries) {
-        console.log(`Waiting for electronDB... (${retries + 1}/${maxRetries})`)
-        await new Promise(resolve => setTimeout(resolve, 200))
-        retries++
-      }
-
-      if (!window.electronDB) {
-        console.error('electronDB not available after retries!')
-        setIsLoading(false)
-        return
-      }
-
-      console.log('electronDB is ready!')
       const [todosData, titlesData, separatorsData] = await Promise.all([
         electronDB.getTodos(),
         electronDB.getTitles(),
         electronDB.getSeparators(),
       ])
-      console.log('Loaded data:', { todos: todosData.length, titles: titlesData.length, separators: separatorsData.length })
       setTodos(todosData)
       setTitles(titlesData)
       setSeparators(separatorsData)
@@ -77,135 +56,138 @@ export function TodoApp() {
     }
   }
 
-  const handleAddTodo = async (todo: Todo) => {
+  const handleAddTodo = useCallback(async (todo: Todo) => {
+    setTodos((prev) => [...prev, todo])
     try {
       await electronDB.createTodo(todo)
-      // Reload data to get the created todo
-      await loadData()
     } catch (error) {
       console.error('Failed to add todo:', error)
-      // Optimistic update fallback
-      setTodos((prev) => [...prev, todo])
+      setTodos((prev) => prev.filter((t) => t.id !== todo.id))
     }
-  }
+  }, [])
 
-  const handleAddTodos = async (newTodos: Todo[]) => {
+  const handleAddTodos = useCallback(async (newTodos: Todo[]) => {
+    setTodos((prev) => [...prev, ...newTodos])
     try {
       await electronDB.createTodos(newTodos)
-      // Reload data to get the created todos
-      await loadData()
     } catch (error) {
       console.error('Failed to add todos:', error)
-      // Optimistic update fallback
-      setTodos((prev) => [...prev, ...newTodos])
+      const newIds = new Set(newTodos.map((t) => t.id))
+      setTodos((prev) => prev.filter((t) => !newIds.has(t.id)))
     }
-  }
+  }, [])
 
-  const handleAddTitle = async (title: Title) => {
+  const handleAddTitle = useCallback(async (title: Title) => {
+    setTitles((prev) => [...prev, title])
     try {
       await electronDB.createTitle(title.text)
-      // Reload data to get the created title
-      await loadData()
     } catch (error) {
       console.error('Failed to add title:', error)
-      // Optimistic update fallback
-      setTitles((prev) => [...prev, title])
+      setTitles((prev) => prev.filter((t) => t.id !== title.id))
     }
-  }
+  }, [])
 
-  const handleUpdateTodo = async (id: string, updates: Partial<Todo>) => {
-    try {
-      // Optimistic update
-      setTodos((prev) => prev.map((todo) => (todo.id === id ? { ...todo, ...updates } : todo)))
-      await electronDB.updateTodo(id, updates)
-    } catch (error) {
-      console.error('Failed to update todo:', error)
-      // Revert on error
-      loadData()
+  const handleUpdateTodo = useCallback((id: string, updates: Partial<Todo>) => {
+    // Optimistic update immediately
+    setTodos((prev) => prev.map((todo) => (todo.id === id ? { ...todo, ...updates } : todo)))
+
+    // Debounce the database write
+    if (todoUpdateTimers.current[id]) {
+      clearTimeout(todoUpdateTimers.current[id])
     }
-  }
-
-  const handleUpdateTitle = async (id: string, text: string) => {
-    try {
-      // Optimistic update
-      setTitles((prev) => prev.map((title) => (title.id === id ? { ...title, text } : title)))
-      await electronDB.updateTitle(id, text)
-    } catch (error) {
-      console.error('Failed to update title:', error)
-      // Revert on error
-      loadData()
-    }
-  }
-
-  const handleDeleteTodo = async (id: string) => {
-    try {
-      // Optimistic update
-      setTodos((prev) => prev.filter((todo) => todo.id !== id))
-      if (selectedTodoId === id) {
-        setSelectedTodoId(null)
+    todoUpdateTimers.current[id] = setTimeout(async () => {
+      try {
+        await electronDB.updateTodo(id, updates)
+      } catch (error) {
+        console.error('Failed to update todo:', error)
+        loadData()
       }
+      delete todoUpdateTimers.current[id]
+    }, 300)
+  }, [])
+
+  // Set up queue manager callback (after handleUpdateTodo is defined)
+  useEffect(() => {
+    aiQueueManager.setUpdateCallback((todoId, updates) => {
+      handleUpdateTodo(todoId, updates)
+    })
+  }, [handleUpdateTodo])
+
+  const handleUpdateTitle = useCallback((id: string, text: string) => {
+    // Optimistic update immediately
+    setTitles((prev) => prev.map((title) => (title.id === id ? { ...title, text } : title)))
+
+    // Debounce the database write
+    if (titleUpdateTimers.current[id]) {
+      clearTimeout(titleUpdateTimers.current[id])
+    }
+    titleUpdateTimers.current[id] = setTimeout(async () => {
+      try {
+        await electronDB.updateTitle(id, text)
+      } catch (error) {
+        console.error('Failed to update title:', error)
+        loadData()
+      }
+      delete titleUpdateTimers.current[id]
+    }, 300)
+  }, [])
+
+  const handleDeleteTodo = useCallback(async (id: string) => {
+    setTodos((prev) => prev.filter((todo) => todo.id !== id))
+    setSelectedTodoId((prev) => (prev === id ? null : prev))
+    try {
       await electronDB.deleteTodo(id)
     } catch (error) {
       console.error('Failed to delete todo:', error)
-      // Revert on error
       loadData()
     }
-  }
+  }, [])
 
-  const handleDeleteTitle = async (id: string) => {
+  const handleDeleteTitle = useCallback(async (id: string) => {
+    setTitles((prev) => prev.filter((title) => title.id !== id))
     try {
-      // Optimistic update
-      setTitles((prev) => prev.filter((title) => title.id !== id))
       await electronDB.deleteTitle(id)
     } catch (error) {
       console.error('Failed to delete title:', error)
-      // Revert on error
       loadData()
     }
-  }
+  }, [])
 
-  const handleAddSeparator = async (separator: Separator) => {
+  const handleAddSeparator = useCallback(async (separator: Separator) => {
+    setSeparators((prev) => [...prev, separator])
     try {
       await electronDB.createSeparator()
-      // Reload data to get the created separator
-      await loadData()
     } catch (error) {
       console.error('Failed to add separator:', error)
-      // Optimistic update fallback
-      setSeparators((prev) => [...prev, separator])
+      setSeparators((prev) => prev.filter((s) => s.id !== separator.id))
     }
-  }
+  }, [])
 
-  const handleDeleteSeparator = async (id: string) => {
+  const handleDeleteSeparator = useCallback(async (id: string) => {
+    setSeparators((prev) => prev.filter((sep) => sep.id !== id))
     try {
-      // Optimistic update
-      setSeparators((prev) => prev.filter((sep) => sep.id !== id))
       await electronDB.deleteSeparator(id)
     } catch (error) {
       console.error('Failed to delete separator:', error)
-      // Revert on error
       loadData()
     }
-  }
+  }, [])
 
-  const handleToggleTodo = async (id: string) => {
+  const handleToggleTodo = useCallback(async (id: string) => {
+    setTodos((prev) => prev.map((todo) => (todo.id === id ? { ...todo, completed: !todo.completed } : todo)))
     try {
-      // Optimistic update
-      setTodos((prev) => prev.map((todo) => (todo.id === id ? { ...todo, completed: !todo.completed } : todo)))
       await electronDB.toggleTodo(id)
     } catch (error) {
       console.error('Failed to toggle todo:', error)
-      // Revert on error
       loadData()
     }
-  }
+  }, [])
 
-  const handleSelectTodo = (id: string) => {
-    setSelectedTodoId(id === selectedTodoId ? null : id)
-  }
+  const handleSelectTodo = useCallback((id: string) => {
+    setSelectedTodoId((prev) => (prev === id ? null : id))
+  }, [])
 
-  const handleReorderItems = async (reorderedItems: BlockItem[]) => {
-    // Optimistic update - update state immediately
+  const handleReorderItems = useCallback(async (reorderedItems: BlockItem[]) => {
     const now = Date.now()
     const updatedTodos: Todo[] = []
     const updatedTitles: Title[] = []
@@ -216,13 +198,10 @@ export function TodoApp() {
       const newCreatedAt = new Date(now + i).toISOString()
 
       if ('completed' in item) {
-        // It's a todo
         updatedTodos.push({ ...item, createdAt: newCreatedAt })
       } else if ('text' in item) {
-        // It's a title
         updatedTitles.push({ ...item, createdAt: newCreatedAt })
       } else {
-        // It's a separator
         updatedSeparators.push({ ...item, createdAt: newCreatedAt })
       }
     }
@@ -232,7 +211,7 @@ export function TodoApp() {
     setTitles(updatedTitles)
     setSeparators(updatedSeparators)
 
-    // Persist to database - WAIT for completion to avoid race conditions
+    // Persist to database
     try {
       await Promise.all(
         reorderedItems.map((item, i) => {
@@ -249,20 +228,17 @@ export function TodoApp() {
       )
     } catch (error) {
       console.error('Failed to persist reorder:', error)
-      // Only reload on error
       loadData()
     }
-  }
+  }, [])
 
-  const handleMergeGroupsFound = (groups: SimilarTaskGroup[]) => {
+  const handleMergeGroupsFound = useCallback((groups: SimilarTaskGroup[]) => {
     setMergeGroups(groups)
     setShowMergeDialog(true)
-  }
+  }, [])
 
-  const handleMerge = async (groupsToMerge: SimilarTaskGroup[]) => {
-    // Process each group
+  const handleMerge = useCallback(async (groupsToMerge: SimilarTaskGroup[]) => {
     for (const group of groupsToMerge) {
-      // Create the merged todo
       const mergedTodo: Todo = {
         id: crypto.randomUUID(),
         title: group.suggestedMerge.title,
@@ -275,104 +251,103 @@ export function TodoApp() {
       }
 
       try {
-        // Delete the old todos from database
         await Promise.all(
           group.taskIds.map(id => electronDB.deleteTodo(id))
         )
-
-        // Create the merged todo in database
         await electronDB.createTodo(mergedTodo)
-
-        // Optimistic update - remove old todos and add merged one
         setTodos((prev) => [
           ...prev.filter((todo) => !group.taskIds.includes(todo.id)),
           mergedTodo
         ])
       } catch (error) {
         console.error('Failed to merge todos:', error)
-        // Reload on error
         loadData()
       }
     }
-  }
+  }, [])
 
   const selectedTodo = todos.find((t) => t.id === selectedTodoId)
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-screen">
-        <p className="text-muted-foreground">Loading your notes...</p>
+      <div className="flex items-center justify-center h-screen bg-background">
+        <p className="text-sm text-muted-foreground">Loading your notes...</p>
       </div>
     )
   }
 
   return (
     <>
-      <div className="flex h-screen">
-        <div className="flex-1 overflow-auto relative">
-          <div className="mx-auto max-w-4xl p-4 md:p-8">
-            <div className="mb-6 flex items-center justify-between">
-              <div>
-                <h1 className="text-sm font-medium mb-2">Notes List</h1>
-                <p className="text-sm text-muted-foreground">
-                  Write naturally. Tasks appear automatically as you pause.
-                </p>
-              </div>
-              <div className="flex items-center gap-1.5">
+      <div className="flex h-screen bg-background">
+        {/* Main Content Area */}
+        <div className="flex-1 flex flex-col min-w-0">
+          {/* Header */}
+          <header className="shrink-0 h-14 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+            <div className="mx-auto max-w-4xl px-4 md:px-8 h-full flex items-center">
+              <div className="flex items-center gap-2 w-full">
+                <h1 className="text-sm font-medium">Notes List</h1>
+                <div className="flex-1" />
                 <Button
                   variant={showAiInput ? "default" : "outline"}
-                  size="sm"
-                  className="h-7 w-7 p-0"
+                  size="icon"
+                  className="h-7 w-7"
                   onClick={() => setShowAiInput(!showAiInput)}
                   title={showAiInput ? "Hide AI Input" : "Show AI Input"}
                 >
-                  <LightningIcon size={12} weight="fill" />
+                  <LightningIcon size={14} weight="fill" />
                 </Button>
                 <Button
                   variant={showMetadata ? "default" : "outline"}
-                  size="sm"
-                  className="h-7 w-7 p-0"
+                  size="icon"
+                  className="h-7 w-7"
                   onClick={() => setShowMetadata(!showMetadata)}
                   title={showMetadata ? "Hide metadata" : "Show metadata"}
                 >
-                  <StarIcon size={12} weight="fill" />
+                  <StarIcon size={14} weight="fill" />
                 </Button>
                 <Button
                   variant="outline"
-                  size="sm"
-                  className="h-7 w-7 p-0"
+                  size="icon"
+                  className="h-7 w-7"
                   onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
                   title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
                 >
                   {theme === "dark" ? (
-                    <SunIcon size={12} weight="fill" />
+                    <SunIcon size={14} weight="fill" />
                   ) : (
-                    <MoonIcon size={12} weight="fill" />
+                    <MoonIcon size={14} weight="fill" />
                   )}
                 </Button>
+                <ShadcnSeparator orientation="vertical" className="h-5" />
                 <MergeButton todos={todos} onMergeGroupsFound={handleMergeGroupsFound} />
               </div>
             </div>
+          </header>
 
-            <TodoTextEditor
-              todos={todos}
-              titles={titles}
-              separators={separators}
-              onAddTodo={handleAddTodo}
-              onAddTitle={handleAddTitle}
-              onAddSeparator={handleAddSeparator}
-              onUpdateTodo={handleUpdateTodo}
-              onUpdateTitle={handleUpdateTitle}
-              onDeleteTodo={handleDeleteTodo}
-              onDeleteTitle={handleDeleteTitle}
-              onDeleteSeparator={handleDeleteSeparator}
-              onToggleTodo={handleToggleTodo}
-              onSelectTodo={handleSelectTodo}
-              onReorderItems={handleReorderItems}
-              selectedTodoId={selectedTodoId}
-              showMetadata={showMetadata}
-            />
-          </div>
+          {/* Scrollable Content */}
+          <ScrollArea className="flex-1">
+            <main className="mx-auto max-w-4xl px-4 md:px-8 py-6">
+              <TodoTextEditor
+                todos={todos}
+                titles={titles}
+                separators={separators}
+                onAddTodo={handleAddTodo}
+                onAddTitle={handleAddTitle}
+                onAddSeparator={handleAddSeparator}
+                onUpdateTodo={handleUpdateTodo}
+                onUpdateTitle={handleUpdateTitle}
+                onDeleteTodo={handleDeleteTodo}
+                onDeleteTitle={handleDeleteTitle}
+                onDeleteSeparator={handleDeleteSeparator}
+                onToggleTodo={handleToggleTodo}
+                onSelectTodo={handleSelectTodo}
+                onReorderItems={handleReorderItems}
+                showMetadata={showMetadata}
+              />
+            </main>
+          </ScrollArea>
+
+          {/* AI Input */}
           <TodoInput
             existingTodos={todos}
             onAddTodos={handleAddTodos}
@@ -383,10 +358,9 @@ export function TodoApp() {
             onToggleVisibility={() => setShowAiInput(!showAiInput)}
           />
         </div>
-        <TodoSidebar
-          selectedTodo={selectedTodo}
-          onUpdate={handleUpdateTodo}
-        />
+
+        {/* Sidebar */}
+        <TodoSidebar selectedTodo={selectedTodo} allTodos={todos} onUpdateTodo={handleUpdateTodo} />
       </div>
 
       <MergeDialog
