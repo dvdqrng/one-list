@@ -42,67 +42,56 @@ export async function processTodoText(input: string, existingTodos: Todo[]): Pro
     setTimeout(() => reject(new Error("Request timed out after 30 seconds")), 30000)
   })
 
+  // Truncate very long inputs to avoid token limits
+  const truncatedInput = input.length > 4000 ? input.slice(0, 4000) + "..." : input
+
   const openai = getOpenAI()
   const generatePromise = generateObject({
     model: openai("gpt-4o-mini"),
     schema: ProcessResultSchema,
-    prompt: `You are a smart todo assistant. Analyze the user's input and determine if they want to:
-1. Create new tasks (IMPORTANT: A SINGLE INPUT CAN CONTAIN MULTIPLE SEPARATE TASKS!)
-2. Update existing tasks (if similar tasks exist)
-3. Mark tasks as complete/incomplete
+    prompt: `You are a smart todo assistant. Analyze the user's input and extract actionable tasks.
 
-MULTIPLE TASKS FROM SINGLE INPUT:
-- Look for multiple distinct tasks separated by commas, "and", "also", line breaks, or natural separators
-- Each distinct action/task should become its own separate todo item
-- Examples:
-  * "Buy milk and call dentist" → 2 separate tasks
-  * "Finish report, schedule meeting, send email" → 3 separate tasks
-  * "Need to buy groceries and also pick up dry cleaning" → 2 separate tasks
-  * "Write documentation" → 1 task (only one action mentioned)
+USER INPUT:
+"${truncatedInput}"
 
-TASK FORMATTING:
-- Extract a clean, concise one-line title (e.g., "Buy milk", "Call dentist")
-- Put ALL other details, context, and notes in the details field
+EXISTING TODOS (${existingTodos.length} total):
+${existingTodos.length === 0 ? "(No existing tasks)" : existingTodos.map((t, i) => `${i + 1}. [ID: ${t.id}] "${t.title}"${t.completed ? " ✓ COMPLETED" : " ○ INCOMPLETE"}${t.priority ? ` (${t.priority})` : ""}${t.dueDate ? ` (due: ${new Date(t.dueDate).toLocaleDateString()})` : ""}${t.category ? ` [${t.category}]` : ""}${t.details ? ` - Details: ${t.details}` : ""}`).join("\n")}
 
-DEFAULT VALUES (use these when no specific information is provided):
-- If NO priority is mentioned or inferred → set priority to "low"
-- If NO due date is mentioned or inferred → set dueDate to today (${todayDate})
+=== INSTRUCTIONS ===
 
-User input: "${input}"
+1. EXTRACT ACTIONABLE TASKS from the input:
+   - Meeting transcripts → Extract action items, follow-ups, decisions
+   - Conversations → Find "I need to...", "we should...", "TODO:", "action item:"
+   - Notes → Extract tasks, reminders, things to do
+   - Simple commands → "buy milk", "call dentist"
 
-Existing todos (${existingTodos.length} total):
-${existingTodos.length === 0 ? "(No existing tasks - you must create new tasks)" : existingTodos.map((t, i) => `${i + 1}. [ID: ${t.id}] ${t.title}${t.completed ? " ✓ COMPLETED" : " ○ INCOMPLETE"}${t.priority ? ` (${t.priority} priority)` : ""}${t.dueDate ? ` (due: ${new Date(t.dueDate).toLocaleDateString()})` : ""}${t.category ? ` [${t.category}]` : ""}${t.details ? ` - Details: ${t.details}` : ""}`).join("\n")}
+2. MATCH EXISTING TASKS (check BEFORE creating new):
+   - "I bought eggs" → Find "Buy eggs" → mark completed
+   - "the car should be red" → Find car task → add to details
+   - Semantic matching: "Buy eggs" = "Get eggs" = "Purchase eggs"
 
-Smart Matching Rules:
-- If there are NO existing tasks, you MUST create new tasks, not updates
-- Only try to match/update if the user explicitly says "update", "change", "modify", "mark as done", "complete", "finish" AND there are existing tasks
-- Match semantically similar tasks (e.g., "grocery shopping" = "buy groceries" = "get food")
-- Match by category when mentioned (e.g., "update my work task" matches tasks with category "work")
-- Match by priority when specified (e.g., "mark urgent task as done" matches high priority tasks)
-- Match by due date proximity (e.g., "tomorrow's task" matches tasks due tomorrow)
-- Default to creating new tasks unless user clearly wants to update existing ones
-- Be flexible with wording variations (e.g., "finish" = "complete" = "mark done" = "check off")
-- When marking as complete, set completed: true in updates
+3. COMPLETION DETECTION:
+   - Past tense: "bought", "finished", "did", "called" → completed: true
+   - Explicit: "done", "complete", "mark as done" → completed: true
 
-Completion Keywords:
-- "complete", "finish", "done", "finished", "completed", "check off", "mark done" = set completed: true
-- "uncomplete", "reopen", "undo", "mark incomplete" = set completed: false
+4. CREATE NEW TASKS only if no similar task exists
 
-Date Parsing Examples:
-- "tomorrow" = next day
-- "next week" = 7 days from now
-- "in 3 days" = 3 days from now
-- "Monday" = next Monday
-- "end of month" = last day of current month
-- Today's date: ${todayDate}
+5. MEETING/TRANSCRIPT EXTRACTION EXAMPLES:
+   - "I need to follow up with John" → New task: "Follow up with John"
+   - "We decided to launch next week" → New task: "Launch" (due: next week)
+   - "Action item: send proposal to client" → New task: "Send proposal to client"
+   - "TODO: review the contract" → New task: "Review the contract"
+   - "I'll handle the marketing" → New task: "Handle marketing"
+   - "Can you send me the report?" → New task: "Send report" (if speaker is user)
 
-Priority Detection:
-- "urgent", "important", "asap", "critical" = high priority
-- "medium", "normal" = medium priority
-- "low", "whenever", "someday" = low priority
-- If NOTHING mentioned → default to "low"
+DATE PARSING (Today: ${todayDate}):
+- "next week" = 7 days, "tomorrow" = +1 day, "Monday" = next Monday
 
-Return the appropriate new todos and/or updates with clear reasoning.`,
+DEFAULTS for new tasks: priority="low", dueDate=today
+
+IMPORTANT: Use EXACT task IDs when updating existing tasks!
+
+Extract ALL actionable items. If input is just conversation with no clear tasks, return empty arrays.`,
   })
 
   const { object } = await Promise.race([generatePromise, timeoutPromise])

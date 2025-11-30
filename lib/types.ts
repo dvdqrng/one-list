@@ -1,8 +1,11 @@
+export type TodoStatus = "due" | "in-progress" | "done"
+
 export interface Todo {
   id: string
   title: string
   details?: string
   completed: boolean
+  status?: TodoStatus
   priority?: "low" | "medium" | "high"
   dueDate?: string
   category?: string
@@ -10,6 +13,7 @@ export interface Todo {
   aiProcessingStatus?: "pending" | "processing" | "enhanced" | "failed"
   groupTitleId?: string // ID of the title this todo belongs to
   indent?: number // Indentation level (0-3) for sub-tasks
+  project?: string // Project name derived from the parent Title's text
 }
 
 export interface Title {
@@ -41,9 +45,15 @@ export function isSeparator(block: BlockItem): block is Separator {
  * Sort block items by createdAt timestamp
  */
 export function sortBlockItems(items: BlockItem[]): BlockItem[] {
-  return [...items].sort((a, b) =>
-    new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
-  )
+  return [...items].sort((a, b) => {
+    const aTime = new Date(a.createdAt).getTime()
+    const bTime = new Date(b.createdAt).getTime()
+    // Handle invalid dates by putting them at the end
+    if (isNaN(aTime) && isNaN(bTime)) return 0
+    if (isNaN(aTime)) return 1
+    if (isNaN(bTime)) return -1
+    return aTime - bTime
+  })
 }
 
 /**

@@ -3,26 +3,208 @@ const path = require('path');
 const fs = require('fs');
 const initSqlJs = require('sql.js');
 const { autoUpdater } = require('electron-updater');
+const OpenAI = require('openai');
 
-// Import AI processing functions
-// Note: These will be loaded at runtime, after Next.js build
-let processTodoText, processBatchTodos, findSimilarTasks;
+// Load environment variables from .env.local (for production builds)
+function loadEnvFile() {
+  // Try multiple locations for .env.local
+  const possiblePaths = [
+    path.join(__dirname, '..', '.env.local'),  // Development: relative to electron folder
+    path.join(app.getAppPath(), '.env.local'),  // Production: app bundle
+    path.join(process.resourcesPath || '', '.env.local'),  // Production: resources folder
+  ];
 
-// Lazy load AI functions to avoid module resolution issues at startup
-async function loadAIFunctions() {
-  try {
-    const processTodosModule = await import('../lib/process-todos.ts');
-    const processBatchTodosModule = await import('../lib/process-batch-todos.ts');
-    const findSimilarTasksModule = await import('../lib/find-similar-tasks.ts');
-
-    processTodoText = processTodosModule.processTodoText;
-    processBatchTodos = processBatchTodosModule.processBatchTodos;
-    findSimilarTasks = findSimilarTasksModule.findSimilarTasks;
-
-    console.log('AI functions loaded successfully');
-  } catch (error) {
-    console.error('Failed to load AI functions:', error);
+  for (const envPath of possiblePaths) {
+    try {
+      if (fs.existsSync(envPath)) {
+        const envContent = fs.readFileSync(envPath, 'utf-8');
+        envContent.split('\n').forEach(line => {
+          const trimmed = line.trim();
+          if (trimmed && !trimmed.startsWith('#')) {
+            const [key, ...valueParts] = trimmed.split('=');
+            if (key && valueParts.length > 0) {
+              let value = valueParts.join('=');
+              // Remove quotes if present
+              if ((value.startsWith('"') && value.endsWith('"')) ||
+                  (value.startsWith("'") && value.endsWith("'"))) {
+                value = value.slice(1, -1);
+              }
+              process.env[key.trim()] = value;
+            }
+          }
+        });
+        console.log('Loaded environment from:', envPath);
+        return true;
+      }
+    } catch (error) {
+      console.warn('Failed to load env from', envPath, error.message);
+    }
   }
+  console.warn('No .env.local file found');
+  return false;
+}
+
+// Load env immediately
+loadEnvFile();
+
+// OpenAI client - initialized lazily
+let openaiClient = null;
+
+function getOpenAIClient() {
+  if (!openaiClient) {
+    const apiKey = process.env.OPENAI_API_KEY || process.env.NEXT_PUBLIC_OPENAI_API_KEY;
+    if (!apiKey) {
+      console.error('Available env vars:', Object.keys(process.env).filter(k => k.includes('OPENAI') || k.includes('API')));
+      throw new Error('OpenAI API key is not configured. Please add OPENAI_API_KEY to .env.local');
+    }
+    openaiClient = new OpenAI({ apiKey });
+  }
+  return openaiClient;
+}
+
+// AI Processing - Process todo text directly with OpenAI
+async function processTodoText(input, existingTodos) {
+  const todayDate = new Date().toISOString().split('T')[0];
+  const truncatedInput = input.length > 4000 ? input.slice(0, 4000) + '...' : input;
+
+  const client = getOpenAIClient();
+
+  const response = await client.chat.completions.create({
+    model: 'gpt-4o-mini',
+    messages: [
+      {
+        role: 'system',
+        content: `You are a smart todo assistant. You must respond with valid JSON only. No markdown, no explanation.
+
+Respond with this exact JSON structure:
+{
+  "newTodos": [
+    {
+      "title": "task title",
+      "details": "optional details",
+      "priority": "low|medium|high",
+      "dueDate": "ISO date string or null",
+      "category": "optional category"
+    }
+  ],
+  "updates": [
+    {
+      "matchedTodoId": "existing todo ID",
+      "updates": { "completed": true/false, "title": "...", etc },
+      "reason": "why matched"
+    }
+  ]
+}`
+      },
+      {
+        role: 'user',
+        content: `Analyze the user's input and extract actionable tasks.
+
+USER INPUT:
+"${truncatedInput}"
+
+EXISTING TODOS (${existingTodos.length} total):
+${existingTodos.length === 0 ? '(No existing tasks)' : existingTodos.map((t, i) => `${i + 1}. [ID: ${t.id}] "${t.title}"${t.completed ? ' ✓ COMPLETED' : ' ○ INCOMPLETE'}${t.priority ? ` (${t.priority})` : ''}${t.dueDate ? ` (due: ${new Date(t.dueDate).toLocaleDateString()})` : ''}${t.category ? ` [${t.category}]` : ''}${t.details ? ` - Details: ${t.details}` : ''}`).join('\n')}
+
+=== INSTRUCTIONS ===
+
+1. EXTRACT ACTIONABLE TASKS from the input:
+   - Meeting transcripts → Extract action items, follow-ups, decisions
+   - Conversations → Find "I need to...", "we should...", "TODO:", "action item:"
+   - Notes → Extract tasks, reminders, things to do
+   - Simple commands → "buy milk", "call dentist"
+
+2. MATCH EXISTING TASKS (check BEFORE creating new):
+   - "I bought eggs" → Find "Buy eggs" → mark completed
+   - "the car should be red" → Find car task → add to details
+   - Semantic matching: "Buy eggs" = "Get eggs" = "Purchase eggs"
+
+3. COMPLETION DETECTION:
+   - Past tense: "bought", "finished", "did", "called" → completed: true
+   - Explicit: "done", "complete", "mark as done" → completed: true
+
+4. CREATE NEW TASKS only if no similar task exists
+
+DATE PARSING (Today: ${todayDate}):
+- "next week" = 7 days, "tomorrow" = +1 day, "Monday" = next Monday
+
+DEFAULTS for new tasks: priority="low", dueDate=today
+
+IMPORTANT: Use EXACT task IDs when updating existing tasks!
+Respond with JSON only.`
+      }
+    ],
+    temperature: 0.3,
+    response_format: { type: 'json_object' }
+  });
+
+  const result = JSON.parse(response.choices[0].message.content);
+
+  const newTodos = (result.newTodos || []).map((todo) => ({
+    id: crypto.randomUUID(),
+    title: todo.title,
+    details: todo.details,
+    completed: false,
+    priority: todo.priority || 'low',
+    dueDate: todo.dueDate || todayDate,
+    category: todo.category,
+    createdAt: new Date().toISOString(),
+  }));
+
+  const updates = (result.updates || []).map((update) => ({
+    id: update.matchedTodoId,
+    updates: update.updates,
+  }));
+
+  return { newTodos, updates };
+}
+
+// AI Processing - Find similar tasks directly with OpenAI
+async function findSimilarTasks(todos) {
+  if (todos.length < 2) {
+    return [];
+  }
+
+  const client = getOpenAIClient();
+
+  const response = await client.chat.completions.create({
+    model: 'gpt-4o-mini',
+    messages: [
+      {
+        role: 'system',
+        content: `You analyze todo lists to find groups of similar/duplicate tasks that could be merged.
+Respond with valid JSON only. Structure:
+{
+  "groups": [
+    {
+      "todoIds": ["id1", "id2"],
+      "suggestedTitle": "merged task title",
+      "reason": "why these are similar",
+      "confidence": 0.9
+    }
+  ]
+}`
+      },
+      {
+        role: 'user',
+        content: `Find groups of similar or duplicate tasks that could be merged:
+
+${todos.map((t) => `[ID: ${t.id}] "${t.title}"${t.details ? ` - ${t.details}` : ''}`).join('\n')}
+
+Only group tasks with confidence > 0.7. Respond with JSON only.`
+      }
+    ],
+    temperature: 0.3,
+    response_format: { type: 'json_object' }
+  });
+
+  const result = JSON.parse(response.choices[0].message.content);
+  return (result.groups || []).map(group => ({
+    todoIds: group.todoIds,
+    suggestedMergedTitle: group.suggestedTitle,
+    similarityReason: group.reason,
+    confidenceScore: group.confidence
+  }));
 }
 
 let mainWindow;
@@ -61,6 +243,8 @@ async function initDatabase() {
       category TEXT,
       ai_processing_status TEXT,
       group_title_id TEXT,
+      indent INTEGER DEFAULT 0,
+      project TEXT,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
@@ -79,6 +263,18 @@ async function initDatabase() {
     CREATE INDEX IF NOT EXISTS idx_todos_completed ON todos(completed);
     CREATE INDEX IF NOT EXISTS idx_todos_group_title_id ON todos(group_title_id);
   `);
+
+  // Add indent and project columns if they don't exist (for existing databases)
+  try {
+    db.run('ALTER TABLE todos ADD COLUMN indent INTEGER DEFAULT 0');
+  } catch (e) {
+    // Column already exists
+  }
+  try {
+    db.run('ALTER TABLE todos ADD COLUMN project TEXT');
+  } catch (e) {
+    // Column already exists
+  }
 
   // Save database after initialization
   saveDatabase();
@@ -171,6 +367,8 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
+    titleBarStyle: 'hiddenInset',  // Hide title bar but show traffic lights
+    trafficLightPosition: { x: 16, y: 16 },  // Vertically center in 44px header: (44 - 12) / 2 = 16
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -191,8 +389,7 @@ function createWindow() {
     }
   });
 
-  // Always open DevTools to debug
-  mainWindow.webContents.openDevTools();
+  // DevTools can be opened manually with Cmd+Option+I
 
   // Add keyboard shortcuts
   mainWindow.webContents.on('before-input-event', (event, input) => {
@@ -271,7 +468,6 @@ app.whenReady().then(async () => {
   console.log('========================================');
 
   await initDatabase();
-  await loadAIFunctions();
   createWindow();
 
   // Check for updates in production
@@ -311,8 +507,18 @@ ipcMain.handle('db:getTodos', () => {
     while (stmt.step()) {
       const row = stmt.getAsObject();
       rows.push({
-        ...row,
-        completed: Boolean(row.completed)
+        id: row.id,
+        title: row.title,
+        details: row.details || undefined,
+        completed: Boolean(row.completed),
+        priority: row.priority || undefined,
+        dueDate: row.due_date || undefined,
+        category: row.category || undefined,
+        aiProcessingStatus: row.ai_processing_status || undefined,
+        groupTitleId: row.group_title_id || undefined,
+        indent: row.indent || 0,
+        project: row.project || undefined,
+        createdAt: row.created_at,
       });
     }
     stmt.free();
@@ -327,8 +533,8 @@ ipcMain.handle('db:createTodo', (event, todo) => {
   try {
     const now = new Date().toISOString();
     const stmt = db.prepare(`
-      INSERT INTO todos (id, title, details, completed, priority, due_date, category, ai_processing_status, group_title_id, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO todos (id, title, details, completed, priority, due_date, category, ai_processing_status, group_title_id, indent, project, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     stmt.run([
@@ -341,6 +547,8 @@ ipcMain.handle('db:createTodo', (event, todo) => {
       todo.category || null,
       todo.aiProcessingStatus || null,
       todo.groupTitleId || null,
+      todo.indent || 0,
+      todo.project || null,
       todo.createdAt || now,
       now
     ]);
@@ -358,8 +566,8 @@ ipcMain.handle('db:createTodos', (event, todos) => {
   try {
     const now = new Date().toISOString();
     const stmt = db.prepare(`
-      INSERT INTO todos (id, title, details, completed, priority, due_date, category, ai_processing_status, group_title_id, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO todos (id, title, details, completed, priority, due_date, category, ai_processing_status, group_title_id, indent, project, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     todos.forEach(todo => {
@@ -373,6 +581,8 @@ ipcMain.handle('db:createTodos', (event, todos) => {
         todo.category || null,
         todo.aiProcessingStatus || null,
         todo.groupTitleId || null,
+        todo.indent || 0,
+        todo.project || null,
         todo.createdAt || now,
         now
       ]);
@@ -421,9 +631,17 @@ ipcMain.handle('db:updateTodo', (event, id, updates) => {
       fields.push('ai_processing_status = ?');
       params.push(updates.aiProcessingStatus || null);
     }
-    if (updates.groupTitleId !== undefined) {
+    if ('groupTitleId' in updates) {
       fields.push('group_title_id = ?');
       params.push(updates.groupTitleId || null);
+    }
+    if ('indent' in updates) {
+      fields.push('indent = ?');
+      params.push(updates.indent || 0);
+    }
+    if ('project' in updates) {
+      fields.push('project = ?');
+      params.push(updates.project || null);
     }
     if (updates.createdAt !== undefined) {
       fields.push('created_at = ?');
@@ -670,9 +888,6 @@ ipcMain.handle('transcribe:audio', async (event, audioBuffer) => {
 // AI Processing - Process todo text
 ipcMain.handle('ai:process-todo-text', async (event, input, existingTodos) => {
   try {
-    if (!processTodoText) {
-      throw new Error('AI functions not loaded yet');
-    }
     return await processTodoText(input, existingTodos);
   } catch (error) {
     console.error('Failed to process todo text:', error);
@@ -680,30 +895,9 @@ ipcMain.handle('ai:process-todo-text', async (event, input, existingTodos) => {
   }
 });
 
-// AI Processing - Process batch todos
-ipcMain.handle('ai:process-batch-todos', async (event, inputs) => {
-  try {
-    if (!processBatchTodos) {
-      throw new Error('AI functions not loaded yet');
-    }
-    const results = await processBatchTodos(inputs);
-    // Convert Map to array for IPC
-    return Array.from(results.entries()).map(([index, result]) => ({
-      index,
-      ...result
-    }));
-  } catch (error) {
-    console.error('Failed to process batch todos:', error);
-    throw error;
-  }
-});
-
 // AI Processing - Find similar tasks
 ipcMain.handle('ai:find-similar-tasks', async (event, todos) => {
   try {
-    if (!findSimilarTasks) {
-      throw new Error('AI functions not loaded yet');
-    }
     return await findSimilarTasks(todos);
   } catch (error) {
     console.error('Failed to find similar tasks:', error);

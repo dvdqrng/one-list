@@ -84,10 +84,6 @@ const electronAPI = {
     console.log('processTodoText called');
     return ipcRenderer.invoke('ai:process-todo-text', input, existingTodos);
   },
-  processBatchTodos: (inputs) => {
-    console.log('processBatchTodos called', inputs.length, 'inputs');
-    return ipcRenderer.invoke('ai:process-batch-todos', inputs);
-  },
   findSimilarTasks: (todos) => {
     console.log('findSimilarTasks called', todos.length, 'todos');
     return ipcRenderer.invoke('ai:find-similar-tasks', todos);

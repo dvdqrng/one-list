@@ -4,6 +4,12 @@
  */
 export function formatDueDate(dateString: string): string {
   const date = new Date(dateString)
+
+  // Handle invalid dates
+  if (isNaN(date.getTime())) {
+    return dateString
+  }
+
   const today = new Date()
   const tomorrow = new Date(today)
   tomorrow.setDate(tomorrow.getDate() + 1)

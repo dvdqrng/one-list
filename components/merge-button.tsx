@@ -48,17 +48,17 @@ export function MergeButton({ todos, onMergeGroupsFound }: MergeButtonProps) {
 
   return (
     <Button
-      variant="outline"
-      size="sm"
+      variant="ghost"
+      size="icon"
       onClick={handleClick}
       disabled={isSearching || todos.length < 2}
-      className="h-6 w-6 p-0"
+      className="h-7 w-7 text-muted-foreground"
       title={isSearching ? "Finding similar tasks..." : "Find similar tasks"}
     >
       {isSearching ? (
-        <SpinnerIcon size={12} className="animate-spin" weight="bold" />
+        <SpinnerIcon className="h-4 w-4 animate-spin" weight="bold" />
       ) : (
-        <IntersectIcon size={12} weight="fill" />
+        <IntersectIcon className="h-4 w-4" weight="regular" />
       )}
     </Button>
   )

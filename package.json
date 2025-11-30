@@ -4,6 +4,9 @@
   "private": true,
   "main": "electron/main.js",
   "packageManager": "pnpm@10.20.0",
+  "pnpm": {
+    "onlyBuiltDependencies": ["electron", "sharp"]
+  },
   "engines": {
     "node": ">=20.0.0",
     "pnpm": ">=9.0.0"
@@ -27,7 +30,8 @@
     "files": [
       "out/**/*",
       "electron/**/*",
-      "package.json"
+      "package.json",
+      ".env.local"
     ],
     "directories": {
       "buildResources": "assets",

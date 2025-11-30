@@ -35,7 +35,15 @@
       "Bash(pnpm electron:build:mac:*)",
       "Bash(find:*)",
       "Bash(npx tsc:*)",
-      "Bash(cd /Users/davidquiring/Documents/Documents\\ -\\ MacBook\\ Pro\\ von\\ David/GitHub/v0-intelligent-todo-app && npx shadcn@latest add sidebar breadcrumb -y:*)"
+      "Bash(cd /Users/davidquiring/Documents/Documents\\ -\\ MacBook\\ Pro\\ von\\ David/GitHub/v0-intelligent-todo-app && npx shadcn@latest add sidebar breadcrumb -y:*)",
+      "Bash(npx shadcn@latest add sidebar --overwrite)",
+      "Bash(npx shadcn@latest add:*)",
+      "Bash(sips:*)",
+      "Bash(open:*)",
+      "Bash(pnpm run build:electron:*)",
+      "Bash(xargs kill:*)",
+      "Bash(pnpm run electron:build:mac:*)",
+      "Bash(hdiutil detach:*)"
     ],
     "deny": [],
     "ask": []
