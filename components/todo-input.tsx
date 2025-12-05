@@ -3,8 +3,10 @@
 import { useState, useEffect, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
-import { ArrowRightIcon, SpinnerIcon, CheckCircleIcon, MicrophoneIcon, MicrophoneSlashIcon, XCircleIcon, WarningIcon } from "@phosphor-icons/react"
-import type { Todo, ProcessResult, ProposedChange } from "@/lib/types"
+import { FeedbackBadge } from "@/components/ui/feedback-badge"
+import { ArrowRightIcon, SpinnerIcon, MicrophoneIcon, MicrophoneSlashIcon } from "@phosphor-icons/react"
+import { processTodoText, transcribeAudio } from "@/lib/api-bridge"
+import type { Todo, ProposedChange } from "@/lib/types"
 
 interface TodoInputProps {
   existingTodos: Todo[]
@@ -119,33 +121,11 @@ export function TodoInput({ existingTodos, onChangesProposed, isProcessing, setI
           stream.getTracks().forEach(track => track.stop())
           stopAudioVisualization()
 
-          // Send to OpenAI Whisper
+          // Send to OpenAI Whisper via unified API bridge
           try {
-            // Try Electron IPC first (production), fallback to API route (development)
-            if (typeof window !== 'undefined' && (window as any).electronDB?.transcribeAudio) {
-              const arrayBuffer = await audioBlob.arrayBuffer()
-              const data = await (window as any).electronDB.transcribeAudio(arrayBuffer)
-              if (data.text) {
-                setInput((prev) => (prev ? prev + " " + data.text : data.text))
-              }
-            } else {
-              const formData = new FormData()
-              formData.append('audio', audioBlob, 'recording.webm')
-
-              const response = await fetch('/api/transcribe', {
-                method: 'POST',
-                body: formData,
-              })
-
-              if (!response.ok) {
-                const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
-                throw new Error(`Transcription failed: ${errorData.error || response.statusText}`)
-              }
-
-              const data = await response.json()
-              if (data.text) {
-                setInput((prev) => (prev ? prev + " " + data.text : data.text))
-              }
+            const data = await transcribeAudio(audioBlob)
+            if (data.text) {
+              setInput((prev) => (prev ? prev + " " + data.text : data.text))
             }
           } catch (error) {
             console.error('Transcription error:', error)
@@ -178,26 +158,7 @@ export function TodoInput({ existingTodos, onChangesProposed, isProcessing, setI
 
     try {
       // Bulk processing: AI analyzes the whole input and determines new todos vs updates
-      let result: ProcessResult;
-
-      // Use Electron IPC if available
-      if (typeof window !== 'undefined' && (window as any).electronDB?.processTodoText) {
-        result = await (window as any).electronDB.processTodoText(input, existingTodos)
-      } else {
-        // Fallback to API route for development/web
-        const response = await fetch('/api/process-todo-text', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ input, existingTodos })
-        })
-
-        if (!response.ok) {
-          const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
-          throw new Error(errorData.error || 'Failed to process todo text')
-        }
-
-        result = await response.json()
-      }
+      const result = await processTodoText(input, existingTodos)
 
       // Convert result to ProposedChange format
       const proposedChanges: ProposedChange[] = []
@@ -301,24 +262,11 @@ export function TodoInput({ existingTodos, onChangesProposed, isProcessing, setI
       <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 w-full max-w-4xl px-4">
         <div className="flex items-end gap-2 bg-background border rounded-2xl shadow-lg px-4 py-2">
           <div className="relative flex-1 flex flex-col">
-            {feedback.message && (
-              <div className="absolute -top-12 left-0 right-0 px-4 py-2 bg-background border rounded-full shadow-lg">
-                <span
-                  className={
-                    feedback.type === "success"
-                      ? "text-primary font-medium flex items-center gap-1.5 text-sm"
-                      : feedback.type === "timeout"
-                        ? "text-warning font-medium flex items-center gap-1.5 text-sm"
-                        : "text-destructive font-medium flex items-center gap-1.5 text-sm"
-                  }
-                >
-                  {feedback.type === "success" && <CheckCircleIcon className="h-3.5 w-3.5" weight="fill" />}
-                  {feedback.type === "timeout" && <WarningIcon className="h-3.5 w-3.5" weight="fill" />}
-                  {feedback.type === "error" && <XCircleIcon className="h-3.5 w-3.5" weight="fill" />}
-                  {feedback.message}
-                </span>
-              </div>
-            )}
+            <FeedbackBadge
+              type={feedback.type}
+              message={feedback.message}
+              position="top"
+            />
             <Textarea
               value={input}
               onChange={(e) => {

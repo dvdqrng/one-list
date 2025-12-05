@@ -6,9 +6,7 @@ import {
   PencilSimpleIcon,
   TrashIcon,
   GitMergeIcon,
-  CheckIcon,
   ArrowRightIcon,
-  CalendarBlankIcon,
   CircleIcon,
   CheckCircleIcon,
 } from "@phosphor-icons/react"
@@ -25,6 +23,8 @@ import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
+import { MetadataBadges } from "@/components/ui/metadata-badges"
+import { formatDueDate } from "@/lib/format"
 import type { ProposedChange, ChangelogSession, Todo } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
@@ -332,24 +332,7 @@ function AdditionChangeContent({ todo }: { todo: Todo }) {
       {todo.details && (
         <p className="text-sm text-muted-foreground pl-5 line-clamp-2">{todo.details}</p>
       )}
-      <div className="flex flex-wrap gap-1.5 pl-5">
-        {todo.priority && (
-          <Badge variant="secondary" className="text-xs">
-            {todo.priority}
-          </Badge>
-        )}
-        {todo.dueDate && (
-          <Badge variant="secondary" className="text-xs gap-1">
-            <CalendarBlankIcon className="h-3 w-3" />
-            {formatDate(todo.dueDate)}
-          </Badge>
-        )}
-        {todo.category && (
-          <Badge variant="secondary" className="text-xs">
-            {todo.category}
-          </Badge>
-        )}
-      </div>
+      <MetadataBadges todo={todo} size="xs" className="pl-5" />
     </div>
   )
 }
@@ -459,24 +442,7 @@ function MergeChangeContent({
       {mergeGroup.mergedResult.details && (
         <p className="text-sm text-muted-foreground pl-6">{mergeGroup.mergedResult.details}</p>
       )}
-      <div className="flex flex-wrap gap-1.5 pl-6">
-        {mergeGroup.mergedResult.priority && (
-          <Badge variant="secondary" className="text-xs">
-            {mergeGroup.mergedResult.priority}
-          </Badge>
-        )}
-        {mergeGroup.mergedResult.dueDate && (
-          <Badge variant="secondary" className="text-xs gap-1">
-            <CalendarBlankIcon className="h-3 w-3" />
-            {formatDate(mergeGroup.mergedResult.dueDate)}
-          </Badge>
-        )}
-        {mergeGroup.mergedResult.category && (
-          <Badge variant="secondary" className="text-xs">
-            {mergeGroup.mergedResult.category}
-          </Badge>
-        )}
-      </div>
+      <MetadataBadges todo={mergeGroup.mergedResult} size="xs" className="pl-6" />
     </div>
   )
 }
@@ -496,32 +462,13 @@ function DeleteChangeContent({ todo, reason }: { todo: Todo; reason?: string }) 
 }
 
 // Helper functions
-function formatDate(dateString: string): string {
-  const date = new Date(dateString)
-
-  // Handle invalid dates
-  if (isNaN(date.getTime())) return dateString
-
-  const today = new Date()
-  const tomorrow = new Date(today)
-  tomorrow.setDate(tomorrow.getDate() + 1)
-
-  if (date.toDateString() === today.toDateString()) {
-    return "Today"
-  }
-  if (date.toDateString() === tomorrow.toDateString()) {
-    return "Tomorrow"
-  }
-  return date.toLocaleDateString("en-US", { month: "short", day: "numeric" })
-}
-
 function formatValue(value: unknown): string {
   if (value === undefined || value === null) return "none"
   if (typeof value === "boolean") return value ? "Yes" : "No"
   if (typeof value === "string") {
     // Check if it's a date
     if (value.match(/^\d{4}-\d{2}-\d{2}/)) {
-      return formatDate(value)
+      return formatDueDate(value)
     }
     return value
   }

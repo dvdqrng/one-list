@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { useState, useMemo, useRef, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -11,6 +11,9 @@ import {
   SidebarHeader,
   SidebarSeparator,
 } from "@/components/ui/sidebar"
+import { EmptyState } from "@/components/ui/empty-state"
+import { TaskItem } from "@/components/ui/task-item"
+import { ProgressIndicator } from "@/components/ui/progress-indicator"
 import {
   Select,
   SelectContent,
@@ -18,23 +21,73 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { WarningCircleIcon, FolderIcon, CheckCircleIcon, CircleIcon, PencilSimpleIcon } from "@phosphor-icons/react"
-import type { Todo, Title, TodoStatus } from "@/lib/types"
+import { WarningCircleIcon, FolderIcon, PencilSimpleIcon } from "@phosphor-icons/react"
+import type { Todo, Title, TodoStatus, Item } from "@/lib/types"
+import { sortItemsByPosition, isTodo, isTitle, isSeparator } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
 interface TodoSidebarProps {
   selectedTodo: Todo | undefined
   selectedTitle: Title | undefined
   allTodos: Todo[]
+  allItems: Item[]
   onUpdateTodo?: (id: string, updates: Partial<Todo>) => void
   onUpdateTitle?: (id: string, text: string) => void
   onRenameCategory?: (oldName: string, newName: string) => void
   onDeleteCategory?: (categoryName: string) => void
+  onMoveToProject?: (todoId: string, targetProjectId: string | null) => void
 }
 
-export function TodoSidebar({ selectedTodo, selectedTitle, allTodos, onUpdateTodo, onUpdateTitle, onRenameCategory }: TodoSidebarProps) {
+export function TodoSidebar({ selectedTodo, selectedTitle, allTodos, allItems, onUpdateTodo, onUpdateTitle, onRenameCategory, onMoveToProject }: TodoSidebarProps) {
   const [editingCategory, setEditingCategory] = useState<string | null>(null)
   const [editingCategoryValue, setEditingCategoryValue] = useState("")
+  const titleInputRef = useRef<HTMLTextAreaElement>(null)
+
+  // Auto-focus title input when a new todo with empty title is selected
+  useEffect(() => {
+    if (selectedTodo && !selectedTodo.title?.trim()) {
+      // Small delay to ensure the sidebar is open and rendered
+      const timer = setTimeout(() => {
+        titleInputRef.current?.focus()
+      }, 100)
+      return () => clearTimeout(timer)
+    }
+  }, [selectedTodo?.id])
+
+  // Sort items by position for group calculations
+  const sortedItems = useMemo(() => sortItemsByPosition(allItems), [allItems])
+
+  // Helper to find parent title for a todo
+  const findParentTitle = useMemo(() => {
+    return (todoId: string): Title | undefined => {
+      const todoIndex = sortedItems.findIndex(item => item.id === todoId)
+      if (todoIndex === -1) return undefined
+
+      // Look backwards for a title, stopping at separators or empty todos
+      for (let i = todoIndex - 1; i >= 0; i--) {
+        const item = sortedItems[i]
+        if (isSeparator(item)) return undefined
+        if (isTodo(item) && !item.title?.trim()) return undefined
+        if (isTitle(item)) {
+          return { id: item.id, text: item.text || '', createdAt: item.createdAt }
+        }
+      }
+      return undefined
+    }
+  }, [sortedItems])
+
+  // Get the parent title for the selected todo
+  const parentTitle = useMemo(() => {
+    if (!selectedTodo) return undefined
+    return findParentTitle(selectedTodo.id)
+  }, [selectedTodo, findParentTitle])
+
+  // Get all available projects (titles)
+  const allProjects = useMemo(() => {
+    return sortedItems
+      .filter(item => isTitle(item))
+      .map(item => ({ id: item.id, text: item.text || '' }))
+  }, [sortedItems])
 
   // Extract unique categories from all todos
   const existingCategories = useMemo(() => {
@@ -47,8 +100,16 @@ export function TodoSidebar({ selectedTodo, selectedTitle, allTodos, onUpdateTod
   // Get todos belonging to the selected title (project)
   const projectTodos = useMemo(() => {
     if (!selectedTitle) return []
-    return allTodos.filter((todo) => todo.groupTitleId === selectedTitle.id)
-  }, [selectedTitle, allTodos])
+    // Find all todos that have this title as their parent
+    return sortedItems
+      .filter(item => isTodo(item))
+      .filter(item => {
+        const parent = findParentTitle(item.id)
+        return parent?.id === selectedTitle.id
+      })
+      .map(item => allTodos.find(t => t.id === item.id))
+      .filter((t): t is Todo => t !== undefined)
+  }, [selectedTitle, sortedItems, findParentTitle, allTodos])
 
   const completedCount = projectTodos.filter((t) => t.completed).length
   const totalCount = projectTodos.length
@@ -83,17 +144,12 @@ export function TodoSidebar({ selectedTodo, selectedTitle, allTodos, onUpdateTod
             {/* Progress */}
             <div className="space-y-2">
               <Label>Progress</Label>
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <span>{completedCount} of {totalCount} tasks completed</span>
-              </div>
-              {totalCount > 0 && (
-                <div className="h-2 bg-muted rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-primary transition-all"
-                    style={{ width: `${(completedCount / totalCount) * 100}%` }}
-                  />
-                </div>
-              )}
+              <ProgressIndicator
+                completed={completedCount}
+                total={totalCount}
+                label="tasks"
+                showLabel={false}
+              />
             </div>
 
             <SidebarSeparator />
@@ -103,44 +159,37 @@ export function TodoSidebar({ selectedTodo, selectedTitle, allTodos, onUpdateTod
               <Label>Tasks ({totalCount})</Label>
               <div className="space-y-1 max-h-[400px] overflow-y-auto">
                 {projectTodos.length === 0 ? (
-                  <p className="text-sm text-muted-foreground py-2">No tasks in this project</p>
+                  <EmptyState
+                    title="No tasks in this project"
+                    className="py-2"
+                  />
                 ) : (
                   projectTodos.map((todo) => (
-                    <div
+                    <TaskItem
                       key={todo.id}
-                      className={cn(
-                        "flex items-center gap-2 py-1.5 px-2 rounded-md text-sm",
-                        todo.completed && "text-muted-foreground"
-                      )}
-                    >
-                      {todo.completed ? (
-                        <CheckCircleIcon className="h-4 w-4 shrink-0 text-primary" weight="fill" />
-                      ) : (
-                        <CircleIcon className="h-4 w-4 shrink-0" weight="regular" />
-                      )}
-                      <span className={cn(todo.completed && "line-through")}>{todo.title}</span>
-                    </div>
+                      todo={todo}
+                      size="sm"
+                      variant="icon"
+                    />
                   ))
                 )}
               </div>
             </div>
           </div>
         ) : !selectedTodo ? (
-          <div className="flex-1 flex flex-col items-center justify-center text-center gap-3 p-6 group-data-[collapsible=icon]:hidden">
-            <div className="h-16 w-16 rounded-full bg-muted flex items-center justify-center">
-              <WarningCircleIcon className="h-8 w-8 text-muted-foreground" weight="fill" />
-            </div>
-            <div>
-              <h3 className="text-sm font-medium mb-1">No task selected</h3>
-              <p className="text-sm text-muted-foreground">Click on a task or project to view details</p>
-            </div>
-          </div>
+          <EmptyState
+            icon={<WarningCircleIcon className="h-8 w-8 text-muted-foreground" weight="fill" />}
+            title="No task selected"
+            description="Click on a task or project to view details"
+            className="flex-1 p-6 group-data-[collapsible=icon]:hidden"
+          />
         ) : (
           <div className="p-4 space-y-4 group-data-[collapsible=icon]:hidden">
             {/* Title */}
             <div className="space-y-2">
               <Label htmlFor="title">Title</Label>
               <Textarea
+                ref={titleInputRef}
                 id="title"
                 value={selectedTodo.title}
                 onChange={(e) => onUpdateTodo?.(selectedTodo.id, { title: e.target.value })}
@@ -219,13 +268,38 @@ export function TodoSidebar({ selectedTodo, selectedTitle, allTodos, onUpdateTod
             {/* Project */}
             <div className="space-y-2">
               <Label>Project</Label>
-              <Input
-                value={selectedTodo.project || ""}
-                readOnly
-                disabled
-                placeholder="No project"
-                className="bg-muted/50 border-border"
-              />
+              <Select
+                value={parentTitle?.id || "none"}
+                onValueChange={(value: string) => {
+                  onMoveToProject?.(selectedTodo.id, value === "none" ? null : value)
+                }}
+              >
+                <SelectTrigger className="w-full border-border">
+                  <SelectValue placeholder="Select project">
+                    <div className="flex items-center gap-2">
+                      {parentTitle ? (
+                        <>
+                          <FolderIcon className="h-4 w-4 text-muted-foreground shrink-0" weight="fill" />
+                          <span>{parentTitle.text}</span>
+                        </>
+                      ) : (
+                        <span className="text-muted-foreground">No project</span>
+                      )}
+                    </div>
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">No project</SelectItem>
+                  {allProjects.map((project) => (
+                    <SelectItem key={project.id} value={project.id}>
+                      <div className="flex items-center gap-2">
+                        <FolderIcon className="h-4 w-4 text-muted-foreground shrink-0" weight="fill" />
+                        <span>{project.text || "Untitled"}</span>
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
             {/* Category */}

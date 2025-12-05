@@ -43,7 +43,9 @@
       "Bash(pnpm run build:electron:*)",
       "Bash(xargs kill:*)",
       "Bash(pnpm run electron:build:mac:*)",
-      "Bash(hdiutil detach:*)"
+      "Bash(hdiutil detach:*)",
+      "Bash(node scripts/seed-sample-data.js:*)",
+      "Bash(xargs:*)"
     ],
     "deny": [],
     "ask": []

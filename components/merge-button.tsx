@@ -3,6 +3,7 @@
 import { useState } from "react"
 import { IntersectIcon, SpinnerIcon } from "@phosphor-icons/react"
 import { Button } from "@/components/ui/button"
+import { findSimilarTasks } from "@/lib/api-bridge"
 import type { SimilarTaskGroup } from "@/lib/find-similar-tasks"
 import type { Todo } from "@/lib/types"
 
@@ -18,26 +19,7 @@ export function MergeButton({ todos, onMergeGroupsFound }: MergeButtonProps) {
     setIsSearching(true)
 
     try {
-      let result: { groups: SimilarTaskGroup[] };
-
-      // Use Electron IPC if available
-      if (typeof window !== 'undefined' && (window as any).electronDB?.findSimilarTasks) {
-        result = await (window as any).electronDB.findSimilarTasks(todos)
-      } else {
-        // Fallback to API route for development/web
-        const response = await fetch('/api/find-similar-tasks', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ todos })
-        })
-
-        if (!response.ok) {
-          throw new Error('Failed to find similar tasks')
-        }
-
-        result = await response.json()
-      }
-
+      const result = await findSimilarTasks(todos)
       onMergeGroupsFound(result.groups)
     } catch (error) {
       console.error("Error finding similar tasks:", error)

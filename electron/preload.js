@@ -7,70 +7,38 @@ console.log('ipcRenderer available:', !!ipcRenderer);
 
 // Define the API
 const electronAPI = {
-  // Todos
-  getTodos: () => {
-    console.log('getTodos called');
-    return ipcRenderer.invoke('db:getTodos');
+  // ========== Unified Items API ==========
+  getItems: () => {
+    console.log('getItems called');
+    return ipcRenderer.invoke('db:getItems');
   },
-  createTodo: (todo) => {
-    console.log('createTodo called', todo);
-    return ipcRenderer.invoke('db:createTodo', todo);
+  createItem: (item) => {
+    console.log('createItem called', item);
+    return ipcRenderer.invoke('db:createItem', item);
   },
-  createTodos: (todos) => {
-    console.log('createTodos called', todos);
-    return ipcRenderer.invoke('db:createTodos', todos);
+  createItems: (items) => {
+    console.log('createItems called', items.length, 'items');
+    return ipcRenderer.invoke('db:createItems', items);
   },
-  updateTodo: (id, updates) => {
-    console.log('updateTodo called', id, updates);
-    return ipcRenderer.invoke('db:updateTodo', id, updates);
+  updateItem: (id, updates) => {
+    console.log('updateItem called', id, updates);
+    return ipcRenderer.invoke('db:updateItem', id, updates);
   },
-  deleteTodo: (id) => {
-    console.log('deleteTodo called', id);
-    return ipcRenderer.invoke('db:deleteTodo', id);
+  updateItemPositions: (positionUpdates) => {
+    console.log('updateItemPositions called', positionUpdates.length, 'updates');
+    return ipcRenderer.invoke('db:updateItemPositions', positionUpdates);
   },
-  toggleTodo: (id) => {
-    console.log('toggleTodo called', id);
-    return ipcRenderer.invoke('db:toggleTodo', id);
+  deleteItem: (id) => {
+    console.log('deleteItem called', id);
+    return ipcRenderer.invoke('db:deleteItem', id);
   },
-
-  // Titles
-  getTitles: () => {
-    console.log('getTitles called');
-    return ipcRenderer.invoke('db:getTitles');
+  toggleItem: (id) => {
+    console.log('toggleItem called', id);
+    return ipcRenderer.invoke('db:toggleItem', id);
   },
-  createTitle: (text) => {
-    console.log('createTitle called', text);
-    return ipcRenderer.invoke('db:createTitle', text);
-  },
-  updateTitle: (id, text) => {
-    console.log('updateTitle called', id, text);
-    return ipcRenderer.invoke('db:updateTitle', id, text);
-  },
-  updateTitleCreatedAt: (id, createdAt) => {
-    console.log('updateTitleCreatedAt called', id, createdAt);
-    return ipcRenderer.invoke('db:updateTitleCreatedAt', id, createdAt);
-  },
-  deleteTitle: (id) => {
-    console.log('deleteTitle called', id);
-    return ipcRenderer.invoke('db:deleteTitle', id);
-  },
-
-  // Separators
-  getSeparators: () => {
-    console.log('getSeparators called');
-    return ipcRenderer.invoke('db:getSeparators');
-  },
-  createSeparator: () => {
-    console.log('createSeparator called');
-    return ipcRenderer.invoke('db:createSeparator');
-  },
-  updateSeparatorCreatedAt: (id, createdAt) => {
-    console.log('updateSeparatorCreatedAt called', id, createdAt);
-    return ipcRenderer.invoke('db:updateSeparatorCreatedAt', id, createdAt);
-  },
-  deleteSeparator: (id) => {
-    console.log('deleteSeparator called', id);
-    return ipcRenderer.invoke('db:deleteSeparator', id);
+  getMaxPosition: () => {
+    console.log('getMaxPosition called');
+    return ipcRenderer.invoke('db:getMaxPosition');
   },
 
   // Transcription
@@ -103,13 +71,45 @@ const electronAPI = {
     return ipcRenderer.invoke('install-update');
   },
   onUpdateAvailable: (callback) => {
-    ipcRenderer.on('update-available', (event, info) => callback(info));
+    ipcRenderer.on('update-available', (_, info) => callback(info));
   },
   onDownloadProgress: (callback) => {
-    ipcRenderer.on('download-progress', (event, progress) => callback(progress));
+    ipcRenderer.on('download-progress', (_, progress) => callback(progress));
   },
   onUpdateDownloaded: (callback) => {
-    ipcRenderer.on('update-downloaded', (event, info) => callback(info));
+    ipcRenderer.on('update-downloaded', (_, info) => callback(info));
+  },
+
+  // Focus Timer
+  startFocusTimer: (duration) => {
+    console.log('startFocusTimer called', duration);
+    return ipcRenderer.invoke('focus:start', duration);
+  },
+  pauseFocusTimer: () => {
+    console.log('pauseFocusTimer called');
+    return ipcRenderer.invoke('focus:pause');
+  },
+  resumeFocusTimer: () => {
+    console.log('resumeFocusTimer called');
+    return ipcRenderer.invoke('focus:resume');
+  },
+  resetFocusTimer: () => {
+    console.log('resetFocusTimer called');
+    return ipcRenderer.invoke('focus:reset');
+  },
+  getFocusState: () => {
+    console.log('getFocusState called');
+    return ipcRenderer.invoke('focus:getState');
+  },
+  onFocusTimerTick: (callback) => {
+    ipcRenderer.on('focus-timer-tick', (_, timeRemaining) => callback(timeRemaining));
+  },
+  onFocusTimerComplete: (callback) => {
+    ipcRenderer.on('focus-timer-complete', () => callback());
+  },
+  removeFocusTimerListeners: () => {
+    ipcRenderer.removeAllListeners('focus-timer-tick');
+    ipcRenderer.removeAllListeners('focus-timer-complete');
   },
 };
 
