@@ -51,7 +51,8 @@
       "Bash(pnpm list:*)",
       "Bash(pnpm patch:*)",
       "Bash(pnpm patch-commit:*)",
-      "Bash(pnpm why:*)"
+      "Bash(pnpm why:*)",
+      "Bash(git tag:*)"
     ],
     "deny": [],
     "ask": []
