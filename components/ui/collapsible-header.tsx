@@ -44,14 +44,14 @@ export function CollapsibleHeader({
       className={cn(
         "group flex items-center gap-1 rounded-md border px-3 py-2 transition-colors cursor-pointer",
         !isFirst && "mt-4",
-        droppable && isOver ? "border-primary bg-primary/10" : "border-transparent hover:bg-primary/10",
+        droppable && isOver ? "border-primary bg-primary/10" : "border-transparent",
         className
       )}
       onClick={onToggle}
     >
       <button
         type="button"
-        className="p-0.5 hover:bg-muted rounded shrink-0"
+        className="p-0.5 rounded shrink-0"
       >
         {isCollapsed ? (
           <CaretRightIcon className="h-4 w-4 text-muted-foreground" weight="bold" />

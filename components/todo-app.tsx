@@ -23,11 +23,11 @@ import {
 } from "./ui/sidebar"
 import { StarIcon, LightningIcon, MoonIcon, SunIcon, SidebarSimpleIcon, EyeIcon, EyeSlashIcon, CalendarBlankIcon, ListBulletsIcon, KanbanIcon, CaretDownIcon } from "@phosphor-icons/react"
 import { useTheme } from "next-themes"
-import { aiQueueManager } from "@/lib/ai-queue-manager"
-import { useStore, useTodos, useTitles, useSelectedTodo, useSelectedTitle } from "@/lib/store"
+import { aiQueueManager } from "@/lib/ai"
+import { useStore, useTodos, useSelectedTodo, useSelectedTitle } from "@/lib/store"
 import { useFocusTimer } from "@/hooks/use-focus-timer"
 import { getDateForCategory, type DueDateCategory } from "@/lib/format"
-import type { Todo, ProposedChange, KanbanGroupBy } from "@/lib/types"
+import type { Todo, ProposedChange } from "@/lib/types"
 import type { SimilarTaskGroup } from "@/lib/find-similar-tasks"
 
 function CustomSidebarTrigger() {
@@ -51,11 +51,9 @@ export function TodoApp() {
   const {
     items,
     isLoading,
-    selectedTodoId,
-    selectedTitleId,
     showMetadata,
-    hideCompleted,
-    groupByDueDate,
+    showCompleted,
+    listGroupBy,
     viewMode,
     kanbanGroupBy,
     changelogSession,
@@ -63,14 +61,11 @@ export function TodoApp() {
     loadItems,
     updateItem,
     updateItemDebounced,
-    deleteItem,
     toggleItem,
-    reorderItems,
     selectTodo,
-    selectTitle,
     setShowMetadata,
-    setHideCompleted,
-    setGroupByDueDate,
+    setShowCompleted,
+    setListGroupBy,
     setViewMode,
     setKanbanGroupBy,
     setChangelogSession,
@@ -82,7 +77,6 @@ export function TodoApp() {
 
   // Derived state from store
   const todos = useTodos()
-  const titles = useTitles()
   const selectedTodo = useSelectedTodo()
   const selectedTitle = useSelectedTitle()
 
@@ -139,30 +133,12 @@ export function TodoApp() {
     }
   }, [items, updateItem])
 
-  // Unified delete handler - works for todos, titles, and separators
-  const handleDeleteItem = useCallback(async (id: string) => {
-    await deleteItem(id)
-  }, [deleteItem])
-
-  const handleToggleTodo = useCallback(async (id: string) => {
-    await toggleItem(id)
-  }, [toggleItem])
+  // Use store actions directly for simple operations
+  const handleToggleTodo = toggleItem
 
   const handleSelectTodo = useCallback((id: string) => {
-    selectTodo(selectedTodoId === id ? null : id)
-  }, [selectTodo, selectedTodoId])
-
-  const handleSelectTitle = useCallback((id: string) => {
-    selectTitle(selectedTitleId === id ? null : id)
-  }, [selectTitle, selectedTitleId])
-
-  const handleReorderItems = useCallback(async (reorderedItems: typeof items) => {
-    await reorderItems(reorderedItems)
-  }, [reorderItems])
-
-  const handleInsertItemAfter = useCallback((afterId: string | null, type: 'todo' | 'title' | 'separator', initialData?: Partial<Todo>): string => {
-    return insertItemAfter(afterId, type, initialData)
-  }, [insertItemAfter])
+    selectTodo(id)
+  }, [selectTodo])
 
   // Handler for when AI input or merge button proposes changes
   const handleChangesProposed = useCallback((
@@ -333,13 +309,13 @@ export function TodoApp() {
               variant="ghost"
               size="icon"
               className="h-7 w-7 text-muted-foreground"
-              onClick={() => setHideCompleted(!hideCompleted)}
-              title={hideCompleted ? "Show completed tasks" : "Hide completed tasks"}
+              onClick={() => setShowCompleted(!showCompleted)}
+              title={showCompleted ? "Hide completed tasks" : "Show completed tasks"}
             >
-              {hideCompleted ? (
-                <EyeSlashIcon className="h-4 w-4" weight="regular" />
-              ) : (
+              {showCompleted ? (
                 <EyeIcon className="h-4 w-4" weight="regular" />
+              ) : (
+                <EyeSlashIcon className="h-4 w-4" weight="regular" />
               )}
             </Button>
             {viewMode === "list" && (
@@ -347,10 +323,10 @@ export function TodoApp() {
                 variant="ghost"
                 size="icon"
                 className="h-7 w-7 text-muted-foreground"
-                onClick={() => setGroupByDueDate(!groupByDueDate)}
-                title={groupByDueDate ? "Group by project" : "Group by due date"}
+                onClick={() => setListGroupBy(listGroupBy === "dueDate" ? "position" : "dueDate")}
+                title={listGroupBy === "dueDate" ? "Group by project" : "Group by due date"}
               >
-                <CalendarBlankIcon className="h-4 w-4" weight={groupByDueDate ? "fill" : "regular"} />
+                <CalendarBlankIcon className="h-4 w-4" weight={listGroupBy === "dueDate" ? "fill" : "regular"} />
               </Button>
             )}
             <Button
@@ -391,31 +367,17 @@ export function TodoApp() {
           </div>
         </header>
         <div className="flex flex-1 flex-col">
-          <main className="flex-1 overflow-auto">
+          <main className={viewMode === "list" ? "flex-1 overflow-auto" : "flex-1 overflow-hidden"}>
             {viewMode === "list" ? (
               <div className="mx-auto max-w-4xl px-4 md:px-8 pb-6">
-                <TodoTextEditor
-                  items={items}
-                  onUpdateTodo={handleUpdateTodo}
-                  onUpdateTitle={handleUpdateTitle}
-                  onDeleteItem={handleDeleteItem}
-                  onToggleTodo={handleToggleTodo}
-                  onSelectTodo={handleSelectTodo}
-                  onSelectTitle={handleSelectTitle}
-                  onReorderItems={handleReorderItems}
-                  onInsertItemAfter={handleInsertItemAfter}
-                  showMetadata={showMetadata}
-                  hideCompleted={hideCompleted}
-                  groupByDueDate={groupByDueDate}
-                  onStartFocus={handleStartFocus}
-                />
+                <TodoTextEditor onStartFocus={handleStartFocus} />
               </div>
             ) : (
-              <div className="px-4 md:px-8 pb-6">
+              <div className="h-full">
                 <TodoKanbanView
                   items={items}
                   groupBy={kanbanGroupBy}
-                  hideCompleted={hideCompleted}
+                  showCompleted={showCompleted}
                   showMetadata={showMetadata}
                   onUpdateTodo={handleUpdateTodo}
                   onToggleTodo={handleToggleTodo}

@@ -1,7 +1,7 @@
 import { generateObject } from "ai"
 import { createOpenAI } from "@ai-sdk/openai"
 import { z } from "zod"
-import type { Todo, ProcessResult } from "./types"
+import type { Todo, ProcessResult } from "../types"
 
 // Create OpenAI instance lazily to ensure env variables are loaded
 function getOpenAI() {

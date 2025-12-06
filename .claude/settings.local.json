@@ -45,7 +45,13 @@
       "Bash(pnpm run electron:build:mac:*)",
       "Bash(hdiutil detach:*)",
       "Bash(node scripts/seed-sample-data.js:*)",
-      "Bash(xargs:*)"
+      "Bash(xargs:*)",
+      "Bash(npm info:*)",
+      "Bash(pnpm update:*)",
+      "Bash(pnpm list:*)",
+      "Bash(pnpm patch:*)",
+      "Bash(pnpm patch-commit:*)",
+      "Bash(pnpm why:*)"
     ],
     "deny": [],
     "ask": []

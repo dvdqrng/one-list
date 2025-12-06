@@ -7,11 +7,17 @@ export type AIProcessingStatus = "pending" | "processing" | "enhanced" | "failed
 // Unified Item Type - Single source of truth
 // ============================================
 
+/**
+ * Item is the core data type. All items (todos, titles, separators)
+ * are stored as Item objects with optional type-specific fields.
+ *
+ * This is the ONLY type used for storage and state management.
+ */
 export interface Item {
   id: string
   type: ItemType
-  position: number // Explicit ordering
-  parentId?: string // Parent project (title) ID - null means no project
+  position: number
+  parentId?: string
 
   // Todo-specific fields
   title?: string
@@ -21,11 +27,11 @@ export interface Item {
   priority?: Priority
   dueDate?: string
   category?: string
-  indent?: number // Indentation level (0-3) for sub-tasks
-  isNow?: boolean // Mark as current focus item for "Now" group
+  indent?: number
+  isNow?: boolean
   aiProcessingStatus?: AIProcessingStatus
 
-  // Title-specific fields (project name)
+  // Title-specific fields
   text?: string
 
   // Metadata
@@ -33,26 +39,31 @@ export interface Item {
   updatedAt?: string
 }
 
-// Type guards for Item
-export function isTodo(item: Item): boolean {
+// ============================================
+// Type Guards
+// ============================================
+
+export function isTodo(item: Item): item is Item & { type: "todo" } {
   return item.type === "todo"
 }
 
-export function isTitle(item: Item): boolean {
+export function isTitle(item: Item): item is Item & { type: "title" } {
   return item.type === "title"
 }
 
-export function isSeparator(item: Item): boolean {
+export function isSeparator(item: Item): item is Item & { type: "separator" } {
   return item.type === "separator"
 }
 
 // ============================================
-// View Types - Clean interfaces for components
+// View Types - For component props
+// These provide cleaner interfaces for UI components.
+// Use Item for storage/state, these for component props.
 // ============================================
 
 /**
- * Todo view type - used by components for cleaner props
- * Converted from Item via itemToTodo()
+ * Todo - view type for component props
+ * Provides a cleaner interface than Item for UI components.
  */
 export interface Todo {
   id: string
@@ -68,12 +79,11 @@ export interface Todo {
   groupTitleId?: string
   indent?: number
   isNow?: boolean
-  project?: string
+  project?: string // Derived field
 }
 
 /**
- * Title view type - used by components for cleaner props
- * Converted from Item via itemToTitle()
+ * Title - view type for component props
  */
 export interface Title {
   id: string
@@ -82,7 +92,7 @@ export interface Title {
 }
 
 /**
- * Separator view type
+ * Separator - view type for component props
  */
 export interface Separator {
   id: string
@@ -90,13 +100,15 @@ export interface Separator {
 }
 
 // ============================================
-// Conversion utilities (Item <-> View types)
+// Conversion utilities
 // ============================================
 
+/**
+ * Convert Item to Todo view type for component props
+ */
 export function itemToTodo(item: Item, allItems?: Item[]): Todo | null {
   if (item.type !== "todo") return null
 
-  // Derive project name if allItems provided
   let project: string | undefined
   if (allItems) {
     project = deriveProjectForItem(item, allItems)
@@ -119,6 +131,9 @@ export function itemToTodo(item: Item, allItems?: Item[]): Todo | null {
   }
 }
 
+/**
+ * Convert Item to Title view type for component props
+ */
 export function itemToTitle(item: Item): Title | null {
   if (item.type !== "title") return null
   return {
@@ -128,8 +143,28 @@ export function itemToTitle(item: Item): Title | null {
   }
 }
 
+/**
+ * Convert Todo back to Item (for updates)
+ */
+export function todoToItem(todo: Todo): Partial<Item> {
+  return {
+    id: todo.id,
+    type: "todo",
+    title: todo.title,
+    details: todo.details,
+    completed: todo.completed,
+    status: todo.status,
+    priority: todo.priority,
+    dueDate: todo.dueDate,
+    category: todo.category,
+    indent: todo.indent,
+    isNow: todo.isNow,
+    aiProcessingStatus: todo.aiProcessingStatus,
+  }
+}
+
 // ============================================
-// Sorting and grouping utilities
+// Utility functions
 // ============================================
 
 export function sortItemsByPosition(items: Item[]): Item[] {
@@ -138,7 +173,7 @@ export function sortItemsByPosition(items: Item[]): Item[] {
 }
 
 /**
- * Derive project name for a todo based on its position relative to titles
+ * Derive project name for a todo based on position relative to titles
  */
 export function deriveProjectForItem(item: Item, allItems: Item[]): string | undefined {
   if (item.type !== "todo") return undefined
@@ -146,16 +181,26 @@ export function deriveProjectForItem(item: Item, allItems: Item[]): string | und
   const sortedItems = sortItemsByPosition(allItems)
   const itemIndex = sortedItems.findIndex(i => i.id === item.id)
 
-  // Look backwards to find the nearest title
   for (let i = itemIndex - 1; i >= 0; i--) {
     const prevItem = sortedItems[i]
-    if (prevItem.type === "separator") {
-      // Hit a separator - no project
-      return undefined
-    }
-    if (prevItem.type === "title") {
-      return prevItem.text
-    }
+    if (prevItem.type === "separator") return undefined
+    if (prevItem.type === "title") return prevItem.text
+  }
+
+  return undefined
+}
+
+/**
+ * Get the title (project) that a todo belongs to
+ */
+export function getProjectForTodo(todoId: string, items: Item[]): Item | undefined {
+  const sortedItems = sortItemsByPosition(items)
+  const itemIndex = sortedItems.findIndex(i => i.id === todoId)
+
+  for (let i = itemIndex - 1; i >= 0; i--) {
+    const prevItem = sortedItems[i]
+    if (prevItem.type === "separator") return undefined
+    if (prevItem.type === "title") return prevItem
   }
 
   return undefined
@@ -166,13 +211,8 @@ export function deriveProjectForItem(item: Item, allItems: Item[]): string | und
 // ============================================
 
 export type ViewMode = "list" | "kanban"
+export type ListGroupBy = "position" | "dueDate"
 export type KanbanGroupBy = "dueDate" | "priority" | "category" | "project" | "status"
-
-// ============================================
-// Grouping types
-// ============================================
-
-export type GroupBy = "position" | "dueDate" | "priority" | "category"
 
 // ============================================
 // AI Processing Types

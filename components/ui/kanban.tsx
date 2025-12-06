@@ -28,7 +28,6 @@ import { CSS } from "@dnd-kit/utilities"
 
 import { cn } from "@/lib/utils"
 import { Card } from "@/components/ui/card"
-import { ScrollArea } from "@/components/ui/scroll-area"
 
 // ============================================
 // Types
@@ -251,7 +250,7 @@ function KanbanProvider<T>({
         onDragOver={onDragOver}
         onDragEnd={handleDragEnd}
       >
-        <div className="flex h-full gap-4 overflow-x-auto px-1 pb-4">
+        <div className="flex h-full min-h-0 gap-0 overflow-x-auto pb-4">
           {columns.map((column) => (
             <React.Fragment key={column.id}>{children(column)}</React.Fragment>
           ))}
@@ -306,21 +305,10 @@ interface KanbanHeaderProps {
   onAdd?: (columnId: string) => void
 }
 
-function KanbanHeader({ columnId, children, className, color, count, onAdd }: KanbanHeaderProps) {
+function KanbanHeader({ columnId, children, className, onAdd }: KanbanHeaderProps) {
   return (
     <div className={cn("flex items-center justify-between px-3 py-2", className)}>
-      <div className="flex items-center gap-2">
-        {color && (
-          <div
-            className="h-2.5 w-2.5 rounded-full"
-            style={{ backgroundColor: color }}
-          />
-        )}
-        <span className="text-sm font-semibold">{children}</span>
-        {count !== undefined && (
-          <span className="text-xs text-muted-foreground">({count})</span>
-        )}
-      </div>
+      <span className="text-sm font-semibold">{children}</span>
       {onAdd && (
         <button
           onClick={() => onAdd(columnId)}
@@ -353,9 +341,9 @@ function KanbanCards<T>({ columnId, children, className }: KanbanCardsProps<T>) 
   const itemIds = items.map(getItemId)
 
   return (
-    <ScrollArea className="flex-1">
+    <div className="flex-1 overflow-y-auto">
       <SortableContext items={itemIds} strategy={verticalListSortingStrategy}>
-        <div className={cn("flex flex-col gap-2 p-2", className)}>
+        <div className={cn("flex flex-col gap-2 px-3 py-2", className)}>
           {items.map((item) => (
             <React.Fragment key={getItemId(item)}>
               {children(item)}
@@ -363,7 +351,7 @@ function KanbanCards<T>({ columnId, children, className }: KanbanCardsProps<T>) 
           ))}
         </div>
       </SortableContext>
-    </ScrollArea>
+    </div>
   )
 }
 
@@ -399,7 +387,7 @@ const KanbanCard = React.memo(function KanbanCard({ id, children, className, onC
       ref={setNodeRef}
       style={style}
       className={cn(
-        "cursor-grab select-none gap-2 rounded-lg border-0 bg-card p-3 py-3",
+        "select-none gap-2 rounded-lg border-0 bg-card cursor-grab",
         isDragging && "opacity-50",
         className
       )}
