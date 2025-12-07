@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { processTodoText } from "@/lib/process-todos"
+import { processTodoText } from "@/lib/ai"
 import type { Todo } from "@/lib/types"
 
 // Increase the max duration for longer AI processing

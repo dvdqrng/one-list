@@ -1,6 +1,6 @@
 "use client"
 
-import type { AIProcessingJob, QueueConfig, Todo } from "./types"
+import type { AIProcessingJob, QueueConfig, Todo } from "../types"
 
 type JobUpdateCallback = (todoId: string, updates: Partial<Todo>) => void
 

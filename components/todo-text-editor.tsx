@@ -1,14 +1,7 @@
 "use client"
 
-import { useState, useRef, useMemo } from "react"
-import { SpinnerIcon, CalendarBlankIcon } from "@phosphor-icons/react"
-import { Checkbox } from "@/components/ui/checkbox"
-import { Badge } from "@/components/ui/badge"
-import { SortableItem } from "@/components/sortable-item"
-import { aiQueueManager } from "@/lib/ai-queue-manager"
-import { formatDueDate } from "@/lib/format"
-import { mergeBlockItems } from "@/lib/types"
-import type { Todo, Title, Separator, BlockItem } from "@/lib/types"
+import { useState, useMemo, useEffect, useCallback, useRef, useImperativeHandle, forwardRef } from "react"
+import { CaretDownIcon, CaretRightIcon } from "@phosphor-icons/react"
 import {
   DndContext,
   closestCenter,
@@ -24,326 +17,546 @@ import {
   sortableKeyboardCoordinates,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable"
+import { SortableItem } from "@/components/sortable-item"
+import { DraggableItem } from "@/components/draggable-item"
+import { DueDateHeader } from "@/components/ui/collapsible-header"
+import { TaskItem } from "@/components/ui/task-item"
+import { useGroupedItems, getItemIdsFromGroups } from "@/lib/grouping"
+import { useFocusManager, type KeyboardActions } from "@/hooks/use-focus-manager"
+import { setFocusTarget, claimFocusTarget } from "@/lib/focus-target"
+import { getDateForCategory, type DueDateCategory } from "@/lib/format"
+import { sortItemsByPosition, isTodo, isTitle } from "@/lib/types"
+import { cn } from "@/lib/utils"
+import { useStore } from "@/lib/store"
+import type { Item, Todo } from "@/lib/types"
 
-type BlockType = "todo" | "title"
+// Constants
+const MAX_INDENT_LEVEL = 3
 
-interface DraftBlock {
+// ============================================
+// TitleInput Component (uncontrolled for focus stability)
+// ============================================
+
+interface TitleInputProps {
   id: string
-  type: BlockType
   text: string
-  indent: number // 0-3
+  onTextChange: (id: string, text: string) => void
+  onKeyDown: (e: React.KeyboardEvent<HTMLInputElement>) => void
+  onFocus: () => void
 }
+
+const TitleInput = forwardRef<HTMLInputElement, TitleInputProps>(
+  function TitleInput({ id, text, onTextChange, onKeyDown, onFocus }, ref) {
+    const inputRef = useRef<HTMLInputElement>(null)
+    const isInitialMount = useRef(true)
+    const lastSyncedText = useRef(text || "")
+
+    useImperativeHandle(ref, () => inputRef.current as HTMLInputElement)
+
+    // On mount: check if this title should be focused
+    useEffect(() => {
+      if (claimFocusTarget(id)) {
+        inputRef.current?.focus()
+      }
+    }, []) // Only on mount
+
+    // Sync value only when not focused AND text changed externally
+    useEffect(() => {
+      if (isInitialMount.current) {
+        isInitialMount.current = false
+        return
+      }
+
+      if (
+        inputRef.current &&
+        document.activeElement !== inputRef.current &&
+        text !== lastSyncedText.current
+      ) {
+        inputRef.current.value = text || ""
+        lastSyncedText.current = text || ""
+      }
+    }, [text])
+
+    const handleChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+      lastSyncedText.current = e.target.value
+      onTextChange(id, e.target.value)
+    }, [id, onTextChange])
+
+    return (
+      <input
+        ref={inputRef}
+        type="text"
+        defaultValue={text || ''}
+        onChange={handleChange}
+        onKeyDown={onKeyDown}
+        onFocus={onFocus}
+        placeholder="Type a title..."
+        className="flex-1 bg-transparent text-lg font-semibold outline-none placeholder:text-muted-foreground"
+      />
+    )
+  }
+)
 
 interface TodoTextEditorProps {
-  todos: Todo[]
-  titles: Title[]
-  separators: Separator[]
-  onAddTodo: (todo: Todo) => void
-  onAddTitle: (title: Title) => void
-  onAddSeparator: (separator: Separator) => void
-  onUpdateTodo: (id: string, updates: Partial<Todo>) => void
-  onUpdateTitle: (id: string, text: string) => void
-  onDeleteTodo: (id: string) => void
-  onDeleteTitle: (id: string) => void
-  onDeleteSeparator: (id: string) => void
-  onToggleTodo: (id: string) => void
-  onSelectTodo: (id: string) => void
-  onReorderItems: (items: BlockItem[]) => void
-  showMetadata: boolean
+  onStartFocus?: () => void
 }
 
-export function TodoTextEditor({
-  todos,
-  titles,
-  separators,
-  onAddTodo,
-  onAddTitle,
-  onAddSeparator,
-  onUpdateTodo,
-  onUpdateTitle,
-  onDeleteTodo,
-  onDeleteTitle,
-  onDeleteSeparator,
-  onToggleTodo,
-  onSelectTodo,
-  onReorderItems,
-  showMetadata,
-}: TodoTextEditorProps) {
-  // Only store draft blocks locally
-  const [drafts, setDrafts] = useState<DraftBlock[]>([{
-    id: crypto.randomUUID(),
-    type: "todo",
-    text: "",
-    indent: 0
-  }])
+export function TodoTextEditor({ onStartFocus }: TodoTextEditorProps) {
+  // ============================================
+  // Store - single source of truth
+  // ============================================
 
-  const inputRefs = useRef<Record<string, HTMLInputElement | null>>({})
+  const {
+    items,
+    showMetadata,
+    showCompleted,
+    listGroupBy,
+    updateItemDebounced,
+    deleteItem,
+    reorderItems,
+    selectTodo,
+    selectTitle,
+    insertItemAfter,
+  } = useStore()
+  // ============================================
+  // State
+  // ============================================
 
-  // Set up drag and drop sensors
+  const [collapsedTitles, setCollapsedTitles] = useState<Set<string>>(new Set())
+  const [collapsedDueDateGroups, setCollapsedDueDateGroups] = useState<Set<string>>(new Set())
+  const [placeholderTitles, setPlaceholderTitles] = useState<Record<string, string>>({})
+
+  // ============================================
+  // Grouping
+  // ============================================
+
+  const groupByDueDate = listGroupBy === "dueDate"
+
+  const groups = useGroupedItems(items, listGroupBy, {
+    hideCompleted: !showCompleted,
+    collapsedGroups: groupByDueDate ? collapsedDueDateGroups : undefined,
+    collapsedTitles: !groupByDueDate ? collapsedTitles : undefined,
+  })
+
+  // Get flat list of focusable IDs
+  const focusableIds = useMemo(() => {
+    const ids: string[] = []
+    for (const group of groups) {
+      for (const item of group.items) {
+        ids.push(item.id)
+      }
+    }
+    // Add placeholder IDs for empty due date groups
+    if (groupByDueDate) {
+      for (const group of groups) {
+        if (group.items.length === 0 && group.metadata?.showEmpty) {
+          ids.push(`placeholder-${group.key}`)
+        }
+      }
+    }
+    return ids
+  }, [groups, groupByDueDate])
+
+  // ============================================
+  // Focus Management
+  // ============================================
+
+  const focusManager = useFocusManager(focusableIds)
+
+  // ============================================
+  // Drag and Drop
+  // ============================================
+
   const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: {
-        distance: 8,
-      },
-    }),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    })
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   )
 
-  // Single source of truth for saved items (sorted by createdAt)
-  const savedItems = useMemo(
-    () => mergeBlockItems(todos, titles, separators),
-    [todos, titles, separators]
-  )
+  const sortedItems = useMemo(() => sortItemsByPosition(items), [items])
 
-  // Combine saved items with drafts for rendering
-  const allItems = useMemo(() => {
-    const items: Array<{ type: 'saved', item: BlockItem } | { type: 'draft', item: DraftBlock }> = [
-      ...savedItems.map(item => ({ type: 'saved' as const, item })),
-      ...drafts.map(draft => ({ type: 'draft' as const, item: draft })),
-    ]
-    return items
-  }, [savedItems, drafts])
-
-  const handleDraftChange = (draftId: string, newText: string) => {
-    setDrafts(prev => prev.map(d =>
-      d.id === draftId ? { ...d, text: newText } : d
-    ))
-  }
-
-  const handleKeyDown = (item: typeof allItems[number], index: number, e: React.KeyboardEvent<HTMLInputElement>) => {
-    // Option+Tab (Alt+Tab) - toggle between todo and title (draft only)
-    if (e.key === "Tab" && e.altKey && item.type === 'draft') {
-      e.preventDefault()
-      setDrafts(prev => prev.map(d =>
-        d.id === item.item.id
-          ? { ...d, type: d.type === "todo" ? "title" : "todo" }
-          : d
-      ))
-      return
+  const sortableIds = useMemo(() => {
+    if (groupByDueDate) {
+      return getItemIdsFromGroups(groups)
     }
+    return sortedItems.map(item => item.id)
+  }, [groupByDueDate, groups, sortedItems])
 
-    // Tab - increase indent (for todos and drafts, not titles)
-    if (e.key === "Tab" && !e.shiftKey && !e.altKey) {
-      const isTodoOrDraft = item.type === 'draft'
-        ? item.item.type === 'todo'
-        : 'completed' in item.item
-
-      if (isTodoOrDraft) {
-        e.preventDefault()
-        if (item.type === 'draft') {
-          setDrafts(prev => prev.map(d =>
-            d.id === item.item.id
-              ? { ...d, indent: Math.min(3, d.indent + 1) }
-              : d
-          ))
-        } else {
-          const todo = item.item as Todo
-          onUpdateTodo(todo.id, { indent: Math.min(3, (todo.indent ?? 0) + 1) })
-        }
-        return
-      }
-    }
-
-    // Shift+Tab - decrease indent (for todos and drafts, not titles)
-    if (e.key === "Tab" && e.shiftKey && !e.altKey) {
-      const isTodoOrDraft = item.type === 'draft'
-        ? item.item.type === 'todo'
-        : 'completed' in item.item
-
-      if (isTodoOrDraft) {
-        e.preventDefault()
-        if (item.type === 'draft') {
-          setDrafts(prev => prev.map(d =>
-            d.id === item.item.id
-              ? { ...d, indent: Math.max(0, d.indent - 1) }
-              : d
-          ))
-        } else {
-          const todo = item.item as Todo
-          onUpdateTodo(todo.id, { indent: Math.max(0, (todo.indent ?? 0) - 1) })
-        }
-        return
-      }
-    }
-
-    // Arrow Up
-    if (e.key === "ArrowUp") {
-      e.preventDefault()
-      if (index > 0) {
-        inputRefs.current[allItems[index - 1].item.id]?.focus()
-      }
-      return
-    }
-
-    // Arrow Down
-    if (e.key === "ArrowDown") {
-      e.preventDefault()
-      if (index < allItems.length - 1) {
-        inputRefs.current[allItems[index + 1].item.id]?.focus()
-      }
-      return
-    }
-
-    // Enter - create block or move to next
-    if (e.key === "Enter") {
-      e.preventDefault()
-
-      if (item.type === 'draft') {
-        const draft = item.item
-
-        if (draft.text.trim()) {
-          // Has text - create the item
-          if (draft.type === "title") {
-            // Create title
-            const newTitle: Title = {
-              id: crypto.randomUUID(),
-              text: draft.text,
-              createdAt: new Date().toISOString(),
-            }
-            onAddTitle(newTitle)
-          } else {
-            // Create todo - determine which title group it belongs to
-            let groupTitleId: string | undefined = undefined
-
-            // Find the most recent title before this draft, stopping at separators
-            for (let i = index - 1; i >= 0; i--) {
-              const prevItem = allItems[i]
-              if (prevItem.type === 'saved') {
-                const saved = prevItem.item
-                const isSeparatorItem = !('completed' in saved) && !('text' in saved)
-                const isTitleItem = 'text' in saved && !('completed' in saved)
-                if (isSeparatorItem) {
-                  break
-                }
-                if (isTitleItem) {
-                  groupTitleId = saved.id
-                  break
-                }
-              }
-            }
-
-            const newTodo: Todo = {
-              id: crypto.randomUUID(),
-              title: draft.text,
-              completed: false,
-              createdAt: new Date().toISOString(),
-              aiProcessingStatus: "pending",
-              groupTitleId,
-              indent: draft.indent,
-            }
-            onAddTodo(newTodo)
-
-            // Enqueue for AI enhancement
-            aiQueueManager.enqueue({
-              todoId: newTodo.id,
-              inputText: draft.text,
-              type: "enhance",
-            })
-          }
-
-          // Remove this draft
-          setDrafts(prev => prev.filter(d => d.id !== draft.id))
-        } else {
-          // Empty draft - create a separator entity
-          const newSeparator: Separator = {
-            id: crypto.randomUUID(),
-            createdAt: new Date().toISOString(),
-          }
-          onAddSeparator(newSeparator)
-
-          // Remove this draft
-          setDrafts(prev => prev.filter(d => d.id !== draft.id))
-        }
-      }
-
-      // Add new draft below (inherit indent from current item)
-      const currentIndent = item.type === 'draft'
-        ? item.item.indent
-        : ('indent' in item.item ? (item.item as Todo).indent ?? 0 : 0)
-      const newDraft: DraftBlock = {
-        id: crypto.randomUUID(),
-        type: "todo",
-        text: "",
-        indent: currentIndent,
-      }
-
-      const draftIndex = item.type === 'draft'
-        ? drafts.findIndex(d => d.id === item.item.id)
-        : drafts.length - 1
-
-      setDrafts(prev => {
-        const newDrafts = [...prev]
-        newDrafts.splice(draftIndex + 1, 0, newDraft)
-        return newDrafts
-      })
-
-      // Focus new draft
-      setTimeout(() => {
-        inputRefs.current[newDraft.id]?.focus()
-      }, 0)
-
-      return
-    }
-
-    // Backspace - delete empty block
-    if (e.key === "Backspace") {
-      if (item.type === 'saved') {
-        const saved = item.item
-        const isTodoItem = 'completed' in saved
-        const isTitleItem = 'text' in saved && !('completed' in saved)
-        const text = isTodoItem ? (saved as Todo).title : isTitleItem ? (saved as Title).text : ''
-        if (!text) {
-          e.preventDefault()
-          if (isTodoItem) {
-            onDeleteTodo(saved.id)
-          } else if (isTitleItem) {
-            onDeleteTitle(saved.id)
-          }
-          focusPreviousItem(index)
-        }
-      } else {
-        // Draft
-        if (!item.item.text && allItems.length > 1) {
-          e.preventDefault()
-          setDrafts(prev => prev.filter(d => d.id !== item.item.id))
-          focusPreviousItem(index)
+  // Build category map for due date view
+  const itemCategoryMap = useMemo(() => {
+    const map: Record<string, string> = {}
+    if (groupByDueDate) {
+      for (const group of groups) {
+        for (const item of group.items) {
+          map[item.id] = group.key
         }
       }
     }
-  }
+    return map
+  }, [groups, groupByDueDate])
 
-  const focusPreviousItem = (currentIndex: number) => {
-    if (currentIndex > 0) {
-      setTimeout(() => {
-        const prevItem = allItems[currentIndex - 1]
-        inputRefs.current[prevItem.item.id]?.focus()
-      }, 0)
-    }
-  }
-
-  const getPriorityColor = (_priority: "low" | "medium" | "high"): "secondary" => {
-    return "secondary"
-  }
-
-  const handleDragEnd = (event: DragEndEvent) => {
+  const handleDragEnd = useCallback((event: DragEndEvent) => {
     const { active, over } = event
+    if (!over || active.id === over.id) return
 
-    if (!over || active.id === over.id) {
+    if (groupByDueDate) {
+      const overId = over.id as string
+      const sourceCategory = itemCategoryMap[active.id as string]
+      let targetCategory: string | undefined
+
+      if (overId.startsWith('drop-')) {
+        targetCategory = overId.replace('drop-', '')
+      } else if (overId.startsWith('item-')) {
+        targetCategory = over.data?.current?.category
+      }
+
+      if (targetCategory && targetCategory !== sourceCategory) {
+        if (targetCategory === "now") {
+          updateItemDebounced(active.id as string, { isNow: true })
+        } else {
+          const newDueDate = getDateForCategory(targetCategory as DueDateCategory)
+          if (sourceCategory === "now") {
+            updateItemDebounced(active.id as string, { isNow: false, dueDate: newDueDate })
+          } else {
+            updateItemDebounced(active.id as string, { dueDate: newDueDate })
+          }
+        }
+      }
       return
     }
 
-    const oldIndex = savedItems.findIndex((item) => item.id === active.id)
-    const newIndex = savedItems.findIndex((item) => item.id === over.id)
+    // Position-based reordering
+    const oldIndex = sortedItems.findIndex(item => item.id === active.id)
+    const newIndex = sortedItems.findIndex(item => item.id === over.id)
+    if (oldIndex === -1 || newIndex === -1) return
 
-    if (oldIndex === -1 || newIndex === -1) {
-      return
+    const reordered = arrayMove(sortedItems, oldIndex, newIndex)
+    const updated = reordered.map((item, idx) => ({ ...item, position: idx }))
+    reorderItems(updated)
+  }, [groupByDueDate, itemCategoryMap, updateItemDebounced, sortedItems, reorderItems])
+
+  // ============================================
+  // Collapse Handlers
+  // ============================================
+
+  const toggleTitleCollapse = useCallback((titleId: string) => {
+    setCollapsedTitles(prev => {
+      const next = new Set(prev)
+      next.has(titleId) ? next.delete(titleId) : next.add(titleId)
+      return next
+    })
+  }, [])
+
+  const toggleDueDateGroupCollapse = useCallback((category: string) => {
+    setCollapsedDueDateGroups(prev => {
+      const next = new Set(prev)
+      next.has(category) ? next.delete(category) : next.add(category)
+      return next
+    })
+  }, [])
+
+  // ============================================
+  // Keyboard Handlers Factory
+  // ============================================
+
+  const createKeyboardHandlers = useCallback((
+    item: Item,
+    options?: { category?: string }
+  ): KeyboardActions => ({
+    onAltTab: () => {
+      if (isTodo(item)) {
+        // Convert todo to title
+        const newId = insertItemAfter(item.id, 'title')
+        updateItemDebounced(newId, { text: item.title || '' })
+        setFocusTarget(newId)
+        deleteItem(item.id)
+      } else if (isTitle(item)) {
+        // Convert title to todo
+        const newId = insertItemAfter(item.id, 'todo')
+        updateItemDebounced(newId, { title: item.text || '' })
+        setFocusTarget(newId)
+        deleteItem(item.id)
+      }
+    },
+    onTab: () => {
+      if (isTodo(item)) {
+        updateItemDebounced(item.id, { indent: Math.min(MAX_INDENT_LEVEL, (item.indent ?? 0) + 1) })
+      }
+    },
+    onShiftTab: () => {
+      if (isTodo(item)) {
+        updateItemDebounced(item.id, { indent: Math.max(0, (item.indent ?? 0) - 1) })
+      }
+    },
+    onArrowUp: () => focusManager.focusPrev(item.id),
+    onArrowDown: () => focusManager.focusNext(item.id),
+    onEnter: () => {
+      const initialData: Partial<Todo> = {}
+      if (options?.category === "now") {
+        initialData.isNow = true
+      } else if (options?.category) {
+        const dueDate = getDateForCategory(options.category as DueDateCategory)
+        if (dueDate) initialData.dueDate = dueDate
+      }
+      const newId = insertItemAfter(item.id, 'todo', initialData)
+      setFocusTarget(newId)
+    },
+    onBackspaceEmpty: () => {
+      const targetId = focusManager.getPrevId(item.id)
+      if (targetId) {
+        focusManager.focus(targetId)
+      }
+      deleteItem(item.id)
+    },
+  }), [insertItemAfter, updateItemDebounced, deleteItem, focusManager])
+
+  // ============================================
+  // Initial Item Effect
+  // ============================================
+
+  useEffect(() => {
+    if (sortedItems.length === 0) {
+      insertItemAfter(null, 'todo')
+    }
+  }, [sortedItems.length, insertItemAfter])
+
+  // ============================================
+  // Render Helpers
+  // ============================================
+
+  const renderTodo = useCallback((item: Item, options?: { category?: string; indentLevel?: number }) => (
+    <TaskItem
+      ref={(el) => focusManager.registerRef(item.id, el)}
+      todo={{
+        id: item.id,
+        title: item.title || "",
+        completed: item.completed || false,
+        status: item.status,
+        priority: item.priority,
+        dueDate: item.dueDate,
+        category: item.category,
+        aiProcessingStatus: item.aiProcessingStatus,
+        indent: item.indent,
+      }}
+      onStatusChange={(id, status) => {
+        const completed = status === "done"
+        updateItemDebounced(id, { status, completed })
+      }}
+      onSelect={selectTodo}
+      onTitleChange={(id, title) => updateItemDebounced(id, { title })}
+      mode="always"
+      indentLevel={options?.indentLevel ?? 0}
+      showMetadata={showMetadata}
+      keyboard={createKeyboardHandlers(item, options)}
+    />
+  ), [focusManager, selectTodo, updateItemDebounced, showMetadata, createKeyboardHandlers])
+
+  const renderTitle = useCallback((item: Item, _isFirst: boolean) => {
+    const isCollapsed = collapsedTitles.has(item.id)
+    const handlers = createKeyboardHandlers(item)
+
+    const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+      const inputValue = (e.target as HTMLInputElement).value
+      if (e.key === "Tab" && e.altKey) {
+        e.preventDefault()
+        handlers.onAltTab?.()
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault()
+        handlers.onArrowUp?.()
+      } else if (e.key === "ArrowDown") {
+        e.preventDefault()
+        handlers.onArrowDown?.()
+      } else if (e.key === "Enter") {
+        e.preventDefault()
+        handlers.onEnter?.()
+      } else if (e.key === "Backspace" && !inputValue) {
+        e.preventDefault()
+        handlers.onBackspaceEmpty?.()
+      }
     }
 
-    const reorderedItems = arrayMove(savedItems, oldIndex, newIndex)
-    onReorderItems(reorderedItems)
-  }
+    return (
+      <div
+        className="group flex items-center gap-1 px-3 py-2 transition-colors cursor-pointer"
+        onClick={() => selectTitle(item.id)}
+      >
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation()
+            toggleTitleCollapse(item.id)
+          }}
+          className="p-0.5 rounded shrink-0"
+        >
+          {isCollapsed ? (
+            <CaretRightIcon className="h-4 w-4 text-muted-foreground" weight="bold" />
+          ) : (
+            <CaretDownIcon className="h-4 w-4 text-muted-foreground" weight="bold" />
+          )}
+        </button>
+        <TitleInput
+          ref={(el) => focusManager.registerRef(item.id, el)}
+          id={item.id}
+          text={item.text || ''}
+          onTextChange={(id, text) => updateItemDebounced(id, { text })}
+          onKeyDown={handleKeyDown}
+          onFocus={() => selectTitle(item.id)}
+        />
+      </div>
+    )
+  }, [collapsedTitles, focusManager, selectTitle, updateItemDebounced, createKeyboardHandlers, toggleTitleCollapse])
+
+  const renderPlaceholder = useCallback((category: string) => {
+    const placeholderId = `placeholder-${category}`
+    const value = placeholderTitles[category] || ""
+
+    return (
+      <TaskItem
+        ref={(el) => focusManager.registerRef(placeholderId, el)}
+        todo={{
+          id: placeholderId,
+          title: value,
+          completed: false,
+        }}
+        mode="always"
+        onTitleChange={(_, title) => {
+          setPlaceholderTitles(prev => ({ ...prev, [category]: title }))
+        }}
+        onToggle={() => {}}
+        keyboard={{
+          onEnter: () => {
+            const title = (placeholderTitles[category] || "").trim()
+            if (!title) return
+            const initialData: Partial<Todo> = { title }
+            if (category === "now") {
+              initialData.isNow = true
+            } else {
+              const dueDate = getDateForCategory(category as DueDateCategory)
+              if (dueDate) initialData.dueDate = dueDate
+            }
+            const newId = insertItemAfter(null, 'todo', initialData)
+            setPlaceholderTitles(prev => ({ ...prev, [category]: "" }))
+            setFocusTarget(newId)
+          },
+        }}
+        placeholder="Type to add a task..."
+      />
+    )
+  }, [placeholderTitles, insertItemAfter, focusManager])
+
+  // ============================================
+  // Render Due Date View
+  // ============================================
+
+  const renderDueDateView = () => (
+    <div className="space-y-4">
+      {groups.map((group, groupIndex) => {
+        const isNowCategory = group.key === "now"
+        const isFirst = groupIndex === 0
+        const isCollapsed = collapsedDueDateGroups.has(group.key)
+
+        return (
+          <div
+            key={group.key}
+            className={cn("rounded-lg transition-colors", isNowCategory && "bg-primary/5")}
+          >
+            <DueDateHeader
+              category={group.key}
+              label={group.label}
+              isCollapsed={isCollapsed}
+              isFirst={isFirst}
+              onToggle={() => toggleDueDateGroupCollapse(group.key)}
+              onStartFocus={isNowCategory ? onStartFocus : undefined}
+            />
+            {!isCollapsed && (
+              <div className={cn(isNowCategory && "pb-2")}>
+                {group.items.length > 0 ? (
+                  group.items.map((item) => (
+                    <DraggableItem key={item.id} id={item.id} category={group.key}>
+                      {renderTodo(item, { category: group.key })}
+                    </DraggableItem>
+                  ))
+                ) : (
+                  group.metadata?.showEmpty && renderPlaceholder(group.key)
+                )}
+              </div>
+            )}
+          </div>
+        )
+      })}
+    </div>
+  )
+
+  // ============================================
+  // Render Position View
+  // ============================================
+
+  const renderPositionView = () => (
+    <div className="space-y-0">
+      {groups.map((group, groupIndex) => {
+        // Title group
+        if (group.metadata?.titleItem) {
+          const titleItem = group.metadata.titleItem
+          const isCollapsed = collapsedTitles.has(titleItem.id)
+          const isFirst = groupIndex === 0
+
+          return (
+            <div
+              key={group.key}
+              className={cn("rounded-lg", !isFirst && "mt-4")}
+            >
+              <SortableItem id={titleItem.id}>
+                {renderTitle(titleItem, isFirst)}
+              </SortableItem>
+              {!isCollapsed && group.items.length > 1 && (
+                <div className="pb-2">
+                  {group.items.slice(1).map((item) => (
+                    <SortableItem key={item.id} id={item.id}>
+                      {renderTodo(item, { indentLevel: 1 })}
+                    </SortableItem>
+                  ))}
+                </div>
+              )}
+            </div>
+          )
+        }
+
+        // Separator group
+        if (group.key.startsWith('separator-')) {
+          const item = group.items[0]
+          return (
+            <SortableItem key={group.key} id={item.id}>
+              <div
+                className="h-4 flex items-center px-3 cursor-pointer hover:bg-muted/20"
+                onClick={() => deleteItem(item.id)}
+              >
+                <div className="w-full h-px bg-border/30" />
+              </div>
+            </SortableItem>
+          )
+        }
+
+        // Standalone todos (ungrouped)
+        return (
+          <div key={group.key}>
+            {group.items.map((item) => {
+              if (isTodo(item)) {
+                return (
+                  <SortableItem key={item.id} id={item.id}>
+                    {renderTodo(item)}
+                  </SortableItem>
+                )
+              }
+              return null
+            })}
+          </div>
+        )
+      })}
+    </div>
+  )
+
+  // ============================================
+  // Main Render
+  // ============================================
 
   return (
     <DndContext
@@ -351,161 +564,13 @@ export function TodoTextEditor({
       collisionDetection={closestCenter}
       onDragEnd={handleDragEnd}
     >
-      <SortableContext
-        items={savedItems.map(item => item.id)}
-        strategy={verticalListSortingStrategy}
-      >
-        <div className="space-y-0">
-          {allItems.map((item, index) => {
-        if (item.type === 'saved') {
-          const saved = item.item
-          const isTodoItem = 'completed' in saved
-          const isTitleItem = 'text' in saved && !('completed' in saved)
-          const isSeparatorItem = !('completed' in saved) && !('text' in saved)
-
-          // Render separator as visual spacer
-          if (isSeparatorItem) {
-            const separator = saved as Separator
-            return (
-              <SortableItem key={separator.id} id={separator.id}>
-                <div
-                  className="h-4 flex items-center px-3 cursor-pointer hover:bg-muted/20"
-                  onClick={() => {
-                    onDeleteSeparator(separator.id)
-                    const newDraft: DraftBlock = {
-                      id: crypto.randomUUID(),
-                      type: "todo",
-                      text: "",
-                      indent: 0,
-                    }
-                    setDrafts(prev => [...prev, newDraft])
-                    setTimeout(() => {
-                      inputRefs.current[newDraft.id]?.focus()
-                    }, 0)
-                  }}
-                >
-                  <div className="w-full h-px bg-border/30" />
-                </div>
-              </SortableItem>
-            )
-          }
-
-          // Render todo
-          if (isTodoItem) {
-            const todo = saved as Todo
-            const indentLevel = todo.indent ?? 0
-            return (
-              <SortableItem key={todo.id} id={todo.id}>
-                <div
-                  className="group flex items-center gap-2 rounded-md border border-transparent px-3 py-1 hover:bg-muted/30 transition-colors"
-                  style={{ paddingLeft: `${12 + indentLevel * 24}px` }}
-                >
-                  <Checkbox
-                    checked={todo.completed}
-                    onCheckedChange={() => onToggleTodo(todo.id)}
-                    className="shrink-0"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      onSelectTodo(todo.id)
-                    }}
-                  />
-                  <input
-                    ref={(el) => { inputRefs.current[todo.id] = el }}
-                    type="text"
-                    value={todo.title}
-                    onChange={(e) => onUpdateTodo(todo.id, { title: e.target.value })}
-                    onKeyDown={(e) => handleKeyDown(item, index, e)}
-                    onFocus={() => onSelectTodo(todo.id)}
-                    placeholder="Type a task..."
-                    className={`flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground ${
-                      todo.completed ? "line-through opacity-60" : ""
-                    }`}
-                  />
-                  {todo.aiProcessingStatus && (todo.aiProcessingStatus === "processing" || todo.aiProcessingStatus === "pending") && (
-                    <SpinnerIcon className="h-4 w-4 animate-spin text-muted-foreground" weight="bold" />
-                  )}
-                  {showMetadata && (
-                    <div className="flex items-center gap-1" onClick={() => onSelectTodo(todo.id)}>
-                      {todo.priority && (
-                        <Badge variant={getPriorityColor(todo.priority)} className="cursor-pointer">
-                          {todo.priority}
-                        </Badge>
-                      )}
-                      {todo.dueDate && (
-                        <Badge variant="secondary" className="cursor-pointer gap-1">
-                          <CalendarBlankIcon className="h-3 w-3" weight="fill" />
-                          {formatDueDate(todo.dueDate)}
-                        </Badge>
-                      )}
-                      {todo.category && (
-                        <Badge variant="secondary" className="cursor-pointer">
-                          {todo.category}
-                        </Badge>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </SortableItem>
-            )
-          }
-
-          // Must be a title
-          if (isTitleItem) {
-            const title = saved as Title
-            return (
-              <SortableItem key={title.id} id={title.id}>
-                <div className="group flex items-center gap-2 rounded-md border border-transparent px-3 py-2 mt-4 first:mt-0 transition-colors">
-                  <input
-                    ref={(el) => { inputRefs.current[title.id] = el }}
-                    type="text"
-                    value={title.text}
-                    onChange={(e) => onUpdateTitle(title.id, e.target.value)}
-                    onKeyDown={(e) => handleKeyDown(item, index, e)}
-                    placeholder="Type a title..."
-                    className="flex-1 bg-transparent text-lg font-semibold outline-none placeholder:text-muted-foreground"
-                  />
-                </div>
-              </SortableItem>
-            )
-          }
-
-          return null
-        } else {
-          // Draft
-          const draft = item.item
-          const isDraftTitle = draft.type === "title"
-          const indentLevel = isDraftTitle ? 0 : draft.indent
-
-          return (
-            <div
-              key={draft.id}
-              className={`group flex items-center gap-2 rounded-md border border-transparent px-3 transition-colors ${
-                isDraftTitle ? "py-2" : "py-1 hover:bg-muted/30"
-              }`}
-              style={{ paddingLeft: `${12 + indentLevel * 24}px` }}
-            >
-              <input
-                ref={(el) => { inputRefs.current[draft.id] = el }}
-                type="text"
-                value={draft.text}
-                onChange={(e) => handleDraftChange(draft.id, e.target.value)}
-                onKeyDown={(e) => handleKeyDown(item, index, e)}
-                placeholder={
-                  isDraftTitle
-                    ? "Title (⌥Tab to switch to todo)..."
-                    : "Type a task (⌥Tab for title)..."
-                }
-                className={`flex-1 bg-transparent outline-none placeholder:text-muted-foreground ${
-                  isDraftTitle ? "text-lg font-semibold" : "text-sm"
-                }`}
-                autoFocus={index === allItems.length - 1}
-              />
-            </div>
-          )
-        }
-      })}
-        </div>
-      </SortableContext>
+      {groupByDueDate ? (
+        renderDueDateView()
+      ) : (
+        <SortableContext items={sortableIds} strategy={verticalListSortingStrategy}>
+          {renderPositionView()}
+        </SortableContext>
+      )}
     </DndContext>
   )
 }

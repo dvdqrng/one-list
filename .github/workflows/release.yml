@@ -7,11 +7,9 @@ on:
 
 jobs:
   release:
-    runs-on: ${{ matrix.os }}
-
-    strategy:
-      matrix:
-        os: [macos-latest, ubuntu-latest, windows-latest]
+    runs-on: macos-latest
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout code
@@ -30,71 +28,7 @@ jobs:
       - name: Install dependencies
         run: pnpm install
 
-      - name: Build for macOS
-        if: matrix.os == 'macos-latest'
-        run: pnpm run electron:build:mac
-
-      - name: Build for Windows
-        if: matrix.os == 'windows-latest'
-        run: pnpm run electron:build:win
-
-      - name: Build for Linux
-        if: matrix.os == 'ubuntu-latest'
-        run: pnpm run electron:build:linux
-
-      - name: Upload macOS artifacts
-        if: matrix.os == 'macos-latest'
-        uses: actions/upload-artifact@v4
-        with:
-          name: macos-build
-          path: |
-            dist/*.dmg
-            dist/*.zip
-            dist/*.blockmap
-
-      - name: Upload Windows artifacts
-        if: matrix.os == 'windows-latest'
-        uses: actions/upload-artifact@v4
-        with:
-          name: windows-build
-          path: |
-            dist/*.exe
-            dist/*.blockmap
-
-      - name: Upload Linux artifacts
-        if: matrix.os == 'ubuntu-latest'
-        uses: actions/upload-artifact@v4
-        with:
-          name: linux-build
-          path: |
-            dist/*.AppImage
-            dist/*.deb
-            dist/*.blockmap
-
-  create-release:
-    needs: release
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: artifacts
-
-      - name: Create Release
-        uses: softprops/action-gh-release@v1
-        with:
-          files: |
-            artifacts/macos-build/*
-            artifacts/windows-build/*
-            artifacts/linux-build/*
-          draft: false
-          prerelease: false
-          generate_release_notes: true
+      - name: Build and publish for macOS
+        run: pnpm run electron:build:mac --publish always
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

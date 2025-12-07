@@ -1,9 +1,14 @@
 import { NextResponse } from "next/server"
 import OpenAI from "openai"
 
-const openai = new OpenAI({
-  apiKey: process.env.NEXT_PUBLIC_OPENAI_API_KEY,
-})
+// Lazy initialization to avoid build-time errors
+function getOpenAI() {
+  const apiKey = process.env.NEXT_PUBLIC_OPENAI_API_KEY || process.env.OPENAI_API_KEY
+  if (!apiKey) {
+    throw new Error("OpenAI API key not configured")
+  }
+  return new OpenAI({ apiKey })
+}
 
 export async function POST(request: Request) {
   try {
@@ -17,6 +22,7 @@ export async function POST(request: Request) {
       )
     }
 
+    const openai = getOpenAI()
     const transcription = await openai.audio.transcriptions.create({
       file: audioFile,
       model: "whisper-1",

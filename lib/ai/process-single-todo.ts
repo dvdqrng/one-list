@@ -1,7 +1,7 @@
 import { generateObject } from "ai"
 import { openai } from "@ai-sdk/openai"
 import { z } from "zod"
-import type { Todo } from "./types"
+import type { Todo } from "../types"
 
 const SingleTodoSchema = z.object({
   title: z.string().describe("A concise one-line task title (e.g., 'Buy milk', 'Call dentist', 'Finish report')"),

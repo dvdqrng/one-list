@@ -1,196 +1,139 @@
-import type { Todo, Title, Separator } from "@/lib/types"
+import type { Item } from "@/lib/types"
+import { isElectron, getElectronAPIOrNull } from "@/lib/electron-api"
 
-// Check if we're running in Electron
-export const isElectron = typeof window !== "undefined" && (window as any).electronDB !== undefined
+// Re-export isElectron for backwards compatibility
+export { isElectron }
 
+// ============================================
 // In-memory fallback for web mode
+// ============================================
+
 class WebDatabase {
-  private todos: Todo[] = []
-  private titles: Title[] = []
-  private separators: Separator[] = []
+  private items: Item[] = []
 
-  async getTodos(): Promise<Todo[]> {
-    return this.todos
+  async getItems(): Promise<Item[]> {
+    return [...this.items].sort((a, b) => a.position - b.position)
   }
 
-  async getTitles(): Promise<Title[]> {
-    return this.titles
+  async createItem(item: Item): Promise<Item> {
+    this.items.push(item)
+    return item
   }
 
-  async getSeparators(): Promise<Separator[]> {
-    return this.separators
+  async createItems(items: Item[]): Promise<Item[]> {
+    this.items.push(...items)
+    return items
   }
 
-  async createTodo(todo: Todo): Promise<Todo> {
-    this.todos.push(todo)
-    return todo
-  }
-
-  async createTodos(todos: Todo[]): Promise<Todo[]> {
-    this.todos.push(...todos)
-    return todos
-  }
-
-  async createTitle(text: string): Promise<Title> {
-    const title: Title = {
-      id: crypto.randomUUID(),
-      text,
-      createdAt: new Date().toISOString(),
-    }
-    this.titles.push(title)
-    return title
-  }
-
-  async createSeparator(): Promise<Separator> {
-    const separator: Separator = {
-      id: crypto.randomUUID(),
-      createdAt: new Date().toISOString(),
-    }
-    this.separators.push(separator)
-    return separator
-  }
-
-  async updateTodo(id: string, updates: Partial<Todo>): Promise<void> {
-    const index = this.todos.findIndex((t) => t.id === id)
+  async updateItem(id: string, updates: Partial<Item>): Promise<void> {
+    const index = this.items.findIndex((i) => i.id === id)
     if (index !== -1) {
-      this.todos[index] = { ...this.todos[index], ...updates }
+      this.items[index] = { ...this.items[index], ...updates, updatedAt: new Date().toISOString() }
     }
   }
 
-  async updateTitle(id: string, text: string): Promise<void> {
-    const index = this.titles.findIndex((t) => t.id === id)
+  async updateItemPositions(positionUpdates: { id: string; position: number }[]): Promise<void> {
+    const now = new Date().toISOString()
+    for (const { id, position } of positionUpdates) {
+      const index = this.items.findIndex((i) => i.id === id)
+      if (index !== -1) {
+        this.items[index] = { ...this.items[index], position, updatedAt: now }
+      }
+    }
+  }
+
+  async deleteItem(id: string): Promise<void> {
+    this.items = this.items.filter((i) => i.id !== id)
+  }
+
+  async toggleItem(id: string): Promise<Item | null> {
+    const index = this.items.findIndex((i) => i.id === id)
     if (index !== -1) {
-      this.titles[index] = { ...this.titles[index], text }
+      this.items[index] = {
+        ...this.items[index],
+        completed: !this.items[index].completed,
+        updatedAt: new Date().toISOString()
+      }
+      return this.items[index]
     }
+    return null
   }
 
-  async updateTitleCreatedAt(id: string, createdAt: string): Promise<void> {
-    const index = this.titles.findIndex((t) => t.id === id)
-    if (index !== -1) {
-      this.titles[index] = { ...this.titles[index], createdAt }
-    }
-  }
-
-  async updateSeparatorCreatedAt(id: string, createdAt: string): Promise<void> {
-    const index = this.separators.findIndex((s) => s.id === id)
-    if (index !== -1) {
-      this.separators[index] = { ...this.separators[index], createdAt }
-    }
-  }
-
-  async deleteTodo(id: string): Promise<void> {
-    this.todos = this.todos.filter((t) => t.id !== id)
-  }
-
-  async deleteTitle(id: string): Promise<void> {
-    this.titles = this.titles.filter((t) => t.id !== id)
-  }
-
-  async deleteSeparator(id: string): Promise<void> {
-    this.separators = this.separators.filter((s) => s.id !== id)
-  }
-
-  async toggleTodo(id: string): Promise<void> {
-    const index = this.todos.findIndex((t) => t.id === id)
-    if (index !== -1) {
-      this.todos[index].completed = !this.todos[index].completed
-    }
+  async getMaxPosition(): Promise<number> {
+    if (this.items.length === 0) return -1
+    return Math.max(...this.items.map(i => i.position))
   }
 }
 
 // Create database instance
 const webDB = typeof window !== "undefined" ? new WebDatabase() : null
 
-// Export the database API
-export const electronDB = {
-  getTodos: async () => {
-    if (isElectron && (window as any).electronDB) {
-      return (window as any).electronDB.getTodos()
+// ============================================
+// Items API (type-safe)
+// ============================================
+
+export const itemsDB = {
+  getItems: async (): Promise<Item[]> => {
+    const api = getElectronAPIOrNull()
+    if (api) {
+      return api.getItems()
     }
-    return webDB?.getTodos() || []
+    return webDB?.getItems() || []
   },
-  getTitles: async () => {
-    if (isElectron && (window as any).electronDB) {
-      return (window as any).electronDB.getTitles()
+
+  createItem: async (item: Item): Promise<Item> => {
+    const api = getElectronAPIOrNull()
+    if (api) {
+      return api.createItem(item)
     }
-    return webDB?.getTitles() || []
+    return webDB?.createItem(item) || item
   },
-  getSeparators: async () => {
-    if (isElectron && (window as any).electronDB) {
-      return (window as any).electronDB.getSeparators()
+
+  createItems: async (items: Item[]): Promise<Item[]> => {
+    const api = getElectronAPIOrNull()
+    if (api) {
+      return api.createItems(items)
     }
-    return webDB?.getSeparators() || []
+    return webDB?.createItems(items) || items
   },
-  createTodo: async (todo: Todo) => {
-    if (isElectron && (window as any).electronDB) {
-      return (window as any).electronDB.createTodo(todo)
+
+  updateItem: async (id: string, updates: Partial<Item>): Promise<void> => {
+    const api = getElectronAPIOrNull()
+    if (api) {
+      return api.updateItem(id, updates)
     }
-    return webDB?.createTodo(todo) || todo
+    return webDB?.updateItem(id, updates)
   },
-  createTodos: async (todos: Todo[]) => {
-    if (isElectron && (window as any).electronDB) {
-      return (window as any).electronDB.createTodos(todos)
+
+  updateItemPositions: async (positionUpdates: { id: string; position: number }[]): Promise<void> => {
+    const api = getElectronAPIOrNull()
+    if (api) {
+      return api.updateItemPositions(positionUpdates)
     }
-    return webDB?.createTodos(todos) || todos
+    return webDB?.updateItemPositions(positionUpdates)
   },
-  createTitle: async (text: string) => {
-    if (isElectron && (window as any).electronDB) {
-      return (window as any).electronDB.createTitle(text)
+
+  deleteItem: async (id: string): Promise<void> => {
+    const api = getElectronAPIOrNull()
+    if (api) {
+      return api.deleteItem(id)
     }
-    return webDB?.createTitle(text)
+    return webDB?.deleteItem(id)
   },
-  createSeparator: async () => {
-    if (isElectron && (window as any).electronDB) {
-      return (window as any).electronDB.createSeparator()
+
+  toggleItem: async (id: string): Promise<Item | null> => {
+    const api = getElectronAPIOrNull()
+    if (api) {
+      return api.toggleItem(id)
     }
-    return webDB?.createSeparator()
+    return webDB?.toggleItem(id) || null
   },
-  updateTodo: async (id: string, updates: Partial<Todo>) => {
-    if (isElectron && (window as any).electronDB) {
-      return (window as any).electronDB.updateTodo(id, updates)
+
+  getMaxPosition: async (): Promise<number> => {
+    const api = getElectronAPIOrNull()
+    if (api) {
+      return api.getMaxPosition()
     }
-    return webDB?.updateTodo(id, updates)
-  },
-  updateTitle: async (id: string, text: string) => {
-    if (isElectron && (window as any).electronDB) {
-      return (window as any).electronDB.updateTitle(id, text)
-    }
-    return webDB?.updateTitle(id, text)
-  },
-  updateTitleCreatedAt: async (id: string, createdAt: string) => {
-    if (isElectron && (window as any).electronDB) {
-      return (window as any).electronDB.updateTitleCreatedAt(id, createdAt)
-    }
-    return webDB?.updateTitleCreatedAt(id, createdAt)
-  },
-  updateSeparatorCreatedAt: async (id: string, createdAt: string) => {
-    if (isElectron && (window as any).electronDB) {
-      return (window as any).electronDB.updateSeparatorCreatedAt(id, createdAt)
-    }
-    return webDB?.updateSeparatorCreatedAt(id, createdAt)
-  },
-  deleteTodo: async (id: string) => {
-    if (isElectron && (window as any).electronDB) {
-      return (window as any).electronDB.deleteTodo(id)
-    }
-    return webDB?.deleteTodo(id)
-  },
-  deleteTitle: async (id: string) => {
-    if (isElectron && (window as any).electronDB) {
-      return (window as any).electronDB.deleteTitle(id)
-    }
-    return webDB?.deleteTitle(id)
-  },
-  deleteSeparator: async (id: string) => {
-    if (isElectron && (window as any).electronDB) {
-      return (window as any).electronDB.deleteSeparator(id)
-    }
-    return webDB?.deleteSeparator(id)
-  },
-  toggleTodo: async (id: string) => {
-    if (isElectron && (window as any).electronDB) {
-      return (window as any).electronDB.toggleTodo(id)
-    }
-    return webDB?.toggleTodo(id)
+    return webDB?.getMaxPosition() ?? -1
   },
 }

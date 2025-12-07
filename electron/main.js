@@ -1,34 +1,301 @@
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, ipcMain, Tray, nativeImage } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const initSqlJs = require('sql.js');
 const { autoUpdater } = require('electron-updater');
+const OpenAI = require('openai');
 
-// Import AI processing functions
-// Note: These will be loaded at runtime, after Next.js build
-let processTodoText, processBatchTodos, findSimilarTasks;
+// Load environment variables from .env.local (for production builds)
+function loadEnvFile() {
+  // Try multiple locations for .env.local
+  const possiblePaths = [
+    path.join(__dirname, '..', '.env.local'),  // Development: relative to electron folder
+    path.join(app.getAppPath(), '.env.local'),  // Production: app bundle
+    path.join(process.resourcesPath || '', '.env.local'),  // Production: resources folder
+  ];
 
-// Lazy load AI functions to avoid module resolution issues at startup
-async function loadAIFunctions() {
-  try {
-    const processTodosModule = await import('../lib/process-todos.ts');
-    const processBatchTodosModule = await import('../lib/process-batch-todos.ts');
-    const findSimilarTasksModule = await import('../lib/find-similar-tasks.ts');
-
-    processTodoText = processTodosModule.processTodoText;
-    processBatchTodos = processBatchTodosModule.processBatchTodos;
-    findSimilarTasks = findSimilarTasksModule.findSimilarTasks;
-
-    console.log('AI functions loaded successfully');
-  } catch (error) {
-    console.error('Failed to load AI functions:', error);
+  for (const envPath of possiblePaths) {
+    try {
+      if (fs.existsSync(envPath)) {
+        const envContent = fs.readFileSync(envPath, 'utf-8');
+        envContent.split('\n').forEach(line => {
+          const trimmed = line.trim();
+          if (trimmed && !trimmed.startsWith('#')) {
+            const [key, ...valueParts] = trimmed.split('=');
+            if (key && valueParts.length > 0) {
+              let value = valueParts.join('=');
+              // Remove quotes if present
+              if ((value.startsWith('"') && value.endsWith('"')) ||
+                  (value.startsWith("'") && value.endsWith("'"))) {
+                value = value.slice(1, -1);
+              }
+              process.env[key.trim()] = value;
+            }
+          }
+        });
+        console.log('Loaded environment from:', envPath);
+        return true;
+      }
+    } catch (error) {
+      console.warn('Failed to load env from', envPath, error.message);
+    }
   }
+  console.warn('No .env.local file found');
+  return false;
+}
+
+// Load env immediately
+loadEnvFile();
+
+// OpenAI client - initialized lazily
+let openaiClient = null;
+
+function getOpenAIClient() {
+  if (!openaiClient) {
+    const apiKey = process.env.OPENAI_API_KEY || process.env.NEXT_PUBLIC_OPENAI_API_KEY;
+    if (!apiKey) {
+      console.error('Available env vars:', Object.keys(process.env).filter(k => k.includes('OPENAI') || k.includes('API')));
+      throw new Error('OpenAI API key is not configured. Please add OPENAI_API_KEY to .env.local');
+    }
+    openaiClient = new OpenAI({ apiKey });
+  }
+  return openaiClient;
+}
+
+// AI Processing - Process todo text directly with OpenAI
+async function processTodoText(input, existingTodos) {
+  const todayDate = new Date().toISOString().split('T')[0];
+  const truncatedInput = input.length > 4000 ? input.slice(0, 4000) + '...' : input;
+
+  const client = getOpenAIClient();
+
+  const response = await client.chat.completions.create({
+    model: 'gpt-4o-mini',
+    messages: [
+      {
+        role: 'system',
+        content: `You are a smart todo assistant. You must respond with valid JSON only. No markdown, no explanation.
+
+Respond with this exact JSON structure:
+{
+  "newTodos": [
+    {
+      "title": "task title",
+      "details": "optional details",
+      "priority": "low|medium|high",
+      "dueDate": "ISO date string or null",
+      "category": "optional category"
+    }
+  ],
+  "updates": [
+    {
+      "matchedTodoId": "existing todo ID",
+      "updates": { "completed": true/false, "title": "...", etc },
+      "reason": "why matched"
+    }
+  ]
+}`
+      },
+      {
+        role: 'user',
+        content: `Analyze the user's input and extract actionable tasks.
+
+USER INPUT:
+"${truncatedInput}"
+
+EXISTING TODOS (${existingTodos.length} total):
+${existingTodos.length === 0 ? '(No existing tasks)' : existingTodos.map((t, i) => `${i + 1}. [ID: ${t.id}] "${t.title}"${t.completed ? ' ✓ COMPLETED' : ' ○ INCOMPLETE'}${t.priority ? ` (${t.priority})` : ''}${t.dueDate ? ` (due: ${new Date(t.dueDate).toLocaleDateString()})` : ''}${t.category ? ` [${t.category}]` : ''}${t.details ? ` - Details: ${t.details}` : ''}`).join('\n')}
+
+=== INSTRUCTIONS ===
+
+1. EXTRACT ACTIONABLE TASKS from the input:
+   - Meeting transcripts → Extract action items, follow-ups, decisions
+   - Conversations → Find "I need to...", "we should...", "TODO:", "action item:"
+   - Notes → Extract tasks, reminders, things to do
+   - Simple commands → "buy milk", "call dentist"
+
+2. MATCH EXISTING TASKS (check BEFORE creating new):
+   - "I bought eggs" → Find "Buy eggs" → mark completed
+   - "the car should be red" → Find car task → add to details
+   - Semantic matching: "Buy eggs" = "Get eggs" = "Purchase eggs"
+
+3. COMPLETION DETECTION:
+   - Past tense: "bought", "finished", "did", "called" → completed: true
+   - Explicit: "done", "complete", "mark as done" → completed: true
+
+4. CREATE NEW TASKS only if no similar task exists
+
+DATE PARSING (Today: ${todayDate}):
+- "next week" = 7 days, "tomorrow" = +1 day, "Monday" = next Monday
+
+DEFAULTS for new tasks: priority="low", dueDate=today
+
+IMPORTANT: Use EXACT task IDs when updating existing tasks!
+Respond with JSON only.`
+      }
+    ],
+    temperature: 0.3,
+    response_format: { type: 'json_object' }
+  });
+
+  const result = JSON.parse(response.choices[0].message.content);
+
+  const newTodos = (result.newTodos || []).map((todo) => ({
+    id: crypto.randomUUID(),
+    title: todo.title,
+    details: todo.details,
+    completed: false,
+    priority: todo.priority || 'low',
+    dueDate: todo.dueDate || todayDate,
+    category: todo.category,
+    createdAt: new Date().toISOString(),
+  }));
+
+  const updates = (result.updates || []).map((update) => ({
+    id: update.matchedTodoId,
+    updates: update.updates,
+  }));
+
+  return { newTodos, updates };
+}
+
+// AI Processing - Find similar tasks directly with OpenAI
+async function findSimilarTasks(todos) {
+  if (todos.length < 2) {
+    return [];
+  }
+
+  const client = getOpenAIClient();
+
+  const response = await client.chat.completions.create({
+    model: 'gpt-4o-mini',
+    messages: [
+      {
+        role: 'system',
+        content: `You analyze todo lists to find groups of similar/duplicate tasks that could be merged.
+Respond with valid JSON only. Structure:
+{
+  "groups": [
+    {
+      "todoIds": ["id1", "id2"],
+      "suggestedTitle": "merged task title",
+      "reason": "why these are similar",
+      "confidence": 0.9
+    }
+  ]
+}`
+      },
+      {
+        role: 'user',
+        content: `Find groups of similar or duplicate tasks that could be merged:
+
+${todos.map((t) => `[ID: ${t.id}] "${t.title}"${t.details ? ` - ${t.details}` : ''}`).join('\n')}
+
+Only group tasks with confidence > 0.7. Respond with JSON only.`
+      }
+    ],
+    temperature: 0.3,
+    response_format: { type: 'json_object' }
+  });
+
+  const result = JSON.parse(response.choices[0].message.content);
+  return (result.groups || []).map(group => ({
+    todoIds: group.todoIds,
+    suggestedMergedTitle: group.suggestedTitle,
+    similarityReason: group.reason,
+    confidenceScore: group.confidence
+  }));
 }
 
 let mainWindow;
 let db;
 let SQL;
 let dbPath;
+let tray = null;
+
+// Focus Timer State (runs in main process for reliability)
+const focusTimerState = {
+  isRunning: false,
+  timeRemaining: 1500, // 25 minutes in seconds
+  intervalId: null
+};
+
+// Update tray title with timer display
+function updateTrayTitle(seconds) {
+  if (!tray) return;
+
+  if (seconds <= 0 || !focusTimerState.isRunning) {
+    tray.setTitle(''); // Clear when not running
+  } else {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    tray.setTitle(` ${mins}:${secs.toString().padStart(2, '0')}`);
+  }
+}
+
+// Start the focus timer
+function startFocusTimer() {
+  if (focusTimerState.intervalId) {
+    clearInterval(focusTimerState.intervalId);
+  }
+
+  focusTimerState.isRunning = true;
+  updateTrayTitle(focusTimerState.timeRemaining);
+
+  focusTimerState.intervalId = setInterval(() => {
+    if (focusTimerState.timeRemaining > 0) {
+      focusTimerState.timeRemaining--;
+      updateTrayTitle(focusTimerState.timeRemaining);
+
+      // Sync with renderer
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('focus-timer-tick', focusTimerState.timeRemaining);
+      }
+    } else {
+      // Timer complete
+      clearInterval(focusTimerState.intervalId);
+      focusTimerState.intervalId = null;
+      focusTimerState.isRunning = false;
+      updateTrayTitle(0);
+
+      // Notify renderer
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('focus-timer-complete');
+      }
+    }
+  }, 1000);
+}
+
+// Create tray icon
+function createTray() {
+  // Create a small icon for the tray (16x16 template image for macOS)
+  const iconPath = path.join(__dirname, '../assets/tray-icon.png');
+
+  let trayIcon;
+  if (fs.existsSync(iconPath)) {
+    trayIcon = nativeImage.createFromPath(iconPath);
+    // Make it a template image for macOS (works with dark/light mode)
+    trayIcon = trayIcon.resize({ width: 16, height: 16 });
+    trayIcon.setTemplateImage(true);
+  } else {
+    // Create a simple fallback icon if file doesn't exist
+    trayIcon = nativeImage.createEmpty();
+  }
+
+  tray = new Tray(trayIcon);
+  tray.setToolTip('Focus Timer');
+
+  // Click to show/focus main window
+  tray.on('click', () => {
+    if (mainWindow) {
+      if (mainWindow.isVisible()) {
+        mainWindow.focus();
+      } else {
+        mainWindow.show();
+      }
+    }
+  });
+}
 
 // Initialize SQLite database
 async function initDatabase() {
@@ -49,36 +316,62 @@ async function initDatabase() {
     db = new SQL.Database();
   }
 
-  // Create tables
+  // Create new unified items table (without is_now and parent_id initially for compatibility with migrations)
   db.run(`
-    CREATE TABLE IF NOT EXISTS todos (
+    CREATE TABLE IF NOT EXISTS items (
       id TEXT PRIMARY KEY,
-      title TEXT NOT NULL,
+      type TEXT NOT NULL,
+      position INTEGER NOT NULL,
+      title TEXT,
       details TEXT,
       completed INTEGER DEFAULT 0,
+      status TEXT,
       priority TEXT,
       due_date TEXT,
       category TEXT,
+      indent INTEGER DEFAULT 0,
       ai_processing_status TEXT,
-      group_title_id TEXT,
+      text TEXT,
       created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL
+      updated_at TEXT
     );
 
-    CREATE TABLE IF NOT EXISTS titles (
-      id TEXT PRIMARY KEY,
-      text TEXT NOT NULL,
-      created_at TEXT NOT NULL
-    );
-
-    CREATE TABLE IF NOT EXISTS separators (
-      id TEXT PRIMARY KEY,
-      created_at TEXT NOT NULL
-    );
-
-    CREATE INDEX IF NOT EXISTS idx_todos_completed ON todos(completed);
-    CREATE INDEX IF NOT EXISTS idx_todos_group_title_id ON todos(group_title_id);
+    CREATE INDEX IF NOT EXISTS idx_items_type ON items(type);
+    CREATE INDEX IF NOT EXISTS idx_items_position ON items(position);
+    CREATE INDEX IF NOT EXISTS idx_items_completed ON items(completed);
   `);
+
+  // Add parent_id column if it doesn't exist (migration for existing databases)
+  try {
+    db.run('ALTER TABLE items ADD COLUMN parent_id TEXT');
+    console.log('Added parent_id column to items table');
+  } catch (e) {
+    // Column already exists, ignore
+  }
+
+  // Add is_now column if it doesn't exist (migration for existing databases)
+  try {
+    db.run('ALTER TABLE items ADD COLUMN is_now INTEGER DEFAULT 0');
+    console.log('Added is_now column to items table');
+  } catch (e) {
+    // Column already exists, ignore
+  }
+
+  // Create indexes for parent_id and is_now (after columns exist)
+  try {
+    db.run('CREATE INDEX IF NOT EXISTS idx_items_parent_id ON items(parent_id)');
+  } catch (e) {
+    // Index already exists or other error, ignore
+  }
+
+  try {
+    db.run('CREATE INDEX IF NOT EXISTS idx_items_is_now ON items(is_now)');
+  } catch (e) {
+    // Index already exists or other error, ignore
+  }
+
+  // Migrate data from legacy tables to new items table (if they exist)
+  await migrateToItemsTable();
 
   // Save database after initialization
   saveDatabase();
@@ -94,6 +387,179 @@ function saveDatabase() {
     fs.writeFileSync(dbPath, buffer);
   } catch (error) {
     console.error('Failed to save database:', error);
+  }
+}
+
+// Migrate data from legacy tables (todos, titles, separators) to unified items table
+async function migrateToItemsTable() {
+  try {
+    // Check if items table already has data
+    const countStmt = db.prepare('SELECT COUNT(*) as count FROM items');
+    countStmt.step();
+    const itemsCount = countStmt.getAsObject().count;
+    countStmt.free();
+
+    if (itemsCount > 0) {
+      console.log('Items table already has data, skipping migration');
+      return;
+    }
+
+    // Check if legacy tables exist and have data
+    let todoCount = 0;
+    let titleCount = 0;
+    let separatorCount = 0;
+
+    try {
+      const todoCountStmt = db.prepare('SELECT COUNT(*) as count FROM todos');
+      todoCountStmt.step();
+      todoCount = todoCountStmt.getAsObject().count;
+      todoCountStmt.free();
+    } catch (e) {
+      // Table doesn't exist
+    }
+
+    try {
+      const titleCountStmt = db.prepare('SELECT COUNT(*) as count FROM titles');
+      titleCountStmt.step();
+      titleCount = titleCountStmt.getAsObject().count;
+      titleCountStmt.free();
+    } catch (e) {
+      // Table doesn't exist
+    }
+
+    try {
+      const separatorCountStmt = db.prepare('SELECT COUNT(*) as count FROM separators');
+      separatorCountStmt.step();
+      separatorCount = separatorCountStmt.getAsObject().count;
+      separatorCountStmt.free();
+    } catch (e) {
+      // Table doesn't exist
+    }
+
+    const legacyDataExists = todoCount > 0 || titleCount > 0 || separatorCount > 0;
+
+    if (!legacyDataExists) {
+      console.log('No legacy data to migrate');
+      return;
+    }
+
+    console.log(`Migrating legacy data: ${todoCount} todos, ${titleCount} titles, ${separatorCount} separators`);
+
+    // Collect all legacy items with their timestamps for ordering
+    const allLegacyItems = [];
+
+    // Get todos
+    if (todoCount > 0) {
+      const todosStmt = db.prepare('SELECT * FROM todos ORDER BY created_at ASC');
+      while (todosStmt.step()) {
+        const row = todosStmt.getAsObject();
+        allLegacyItems.push({
+          id: row.id,
+          type: 'todo',
+          title: row.title,
+          details: row.details || null,
+          completed: row.completed,
+          status: null,
+          priority: row.priority || null,
+          due_date: row.due_date || null,
+          category: row.category || null,
+          indent: row.indent || 0,
+          ai_processing_status: row.ai_processing_status || null,
+          text: null,
+          created_at: row.created_at,
+          updated_at: row.updated_at || null,
+          _sortTime: new Date(row.created_at).getTime()
+        });
+      }
+      todosStmt.free();
+    }
+
+    // Get titles
+    if (titleCount > 0) {
+      const titlesStmt = db.prepare('SELECT * FROM titles ORDER BY created_at ASC');
+      while (titlesStmt.step()) {
+        const row = titlesStmt.getAsObject();
+        allLegacyItems.push({
+          id: row.id,
+          type: 'title',
+          title: null,
+          details: null,
+          completed: 0,
+          status: null,
+          priority: null,
+          due_date: null,
+          category: null,
+          indent: 0,
+          ai_processing_status: null,
+          text: row.text,
+          created_at: row.created_at,
+          updated_at: null,
+          _sortTime: new Date(row.created_at).getTime()
+        });
+      }
+      titlesStmt.free();
+    }
+
+    // Get separators
+    if (separatorCount > 0) {
+      const separatorsStmt = db.prepare('SELECT * FROM separators ORDER BY created_at ASC');
+      while (separatorsStmt.step()) {
+        const row = separatorsStmt.getAsObject();
+        allLegacyItems.push({
+          id: row.id,
+          type: 'separator',
+          title: null,
+          details: null,
+          completed: 0,
+          status: null,
+          priority: null,
+          due_date: null,
+          category: null,
+          indent: 0,
+          ai_processing_status: null,
+          text: null,
+          created_at: row.created_at,
+          updated_at: null,
+          _sortTime: new Date(row.created_at).getTime()
+        });
+      }
+      separatorsStmt.free();
+    }
+
+    // Sort by timestamp to determine position
+    allLegacyItems.sort((a, b) => a._sortTime - b._sortTime);
+
+    // Insert into items table with position
+    const insertStmt = db.prepare(`
+      INSERT INTO items (id, type, position, title, details, completed, status, priority, due_date, category, indent, ai_processing_status, text, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    allLegacyItems.forEach((item, index) => {
+      insertStmt.run([
+        item.id,
+        item.type,
+        index, // Position based on sorted order
+        item.title,
+        item.details,
+        item.completed,
+        item.status,
+        item.priority,
+        item.due_date,
+        item.category,
+        item.indent,
+        item.ai_processing_status,
+        item.text,
+        item.created_at,
+        item.updated_at
+      ]);
+    });
+    insertStmt.free();
+
+    console.log(`Migration complete: ${allLegacyItems.length} items migrated to items table`);
+  } catch (error) {
+    console.error('Migration error:', error);
+    // Don't throw - allow app to continue even if migration fails
   }
 }
 
@@ -171,6 +637,8 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
+    titleBarStyle: 'hiddenInset',  // Hide title bar but show traffic lights
+    trafficLightPosition: { x: 16, y: 16 },  // Vertically center in 44px header: (44 - 12) / 2 = 16
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -191,11 +659,18 @@ function createWindow() {
     }
   });
 
-  // Always open DevTools to debug
-  mainWindow.webContents.openDevTools();
-
   // Add keyboard shortcuts
   mainWindow.webContents.on('before-input-event', (event, input) => {
+    // F12: Toggle DevTools
+    if (input.key === 'F12' && input.type === 'keyDown') {
+      event.preventDefault();
+      mainWindow.webContents.toggleDevTools();
+    }
+    // Cmd+Option+I or Ctrl+Shift+I: Toggle DevTools (alternative)
+    if (((input.meta && input.alt) || (input.control && input.shift)) && input.key === 'i' && input.type === 'keyDown') {
+      event.preventDefault();
+      mainWindow.webContents.toggleDevTools();
+    }
     // Cmd+T or Ctrl+T: Load test page
     if ((input.control || input.meta) && input.key === 't' && input.type === 'keyDown') {
       event.preventDefault();
@@ -271,8 +746,8 @@ app.whenReady().then(async () => {
   console.log('========================================');
 
   await initDatabase();
-  await loadAIFunctions();
   createWindow();
+  createTray();
 
   // Check for updates in production
   if (process.env.NODE_ENV !== 'development') {
@@ -301,133 +776,186 @@ app.on('will-quit', () => {
   if (db) db.close();
 });
 
-// ========== IPC Handlers for Database Operations ==========
+// ========== IPC Handlers for Items API ==========
 
-// Todos
-ipcMain.handle('db:getTodos', () => {
+// Get all items sorted by position
+ipcMain.handle('db:getItems', () => {
   try {
-    const stmt = db.prepare('SELECT * FROM todos ORDER BY created_at ASC');
+    const stmt = db.prepare('SELECT * FROM items ORDER BY position ASC');
     const rows = [];
     while (stmt.step()) {
       const row = stmt.getAsObject();
       rows.push({
-        ...row,
-        completed: Boolean(row.completed)
+        id: row.id,
+        type: row.type,
+        position: row.position,
+        parentId: row.parent_id || undefined,
+        title: row.title || undefined,
+        details: row.details || undefined,
+        completed: Boolean(row.completed),
+        status: row.status || undefined,
+        priority: row.priority || undefined,
+        dueDate: row.due_date || undefined,
+        category: row.category || undefined,
+        indent: row.indent || 0,
+        isNow: Boolean(row.is_now),
+        aiProcessingStatus: row.ai_processing_status || undefined,
+        text: row.text || undefined,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at || undefined
       });
     }
     stmt.free();
     return rows;
   } catch (error) {
-    console.error('Failed to get todos:', error);
+    console.error('Failed to get items:', error);
     return [];
   }
 });
 
-ipcMain.handle('db:createTodo', (event, todo) => {
+// Create a new item
+ipcMain.handle('db:createItem', (_, item) => {
   try {
     const now = new Date().toISOString();
     const stmt = db.prepare(`
-      INSERT INTO todos (id, title, details, completed, priority, due_date, category, ai_processing_status, group_title_id, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO items (id, type, position, parent_id, title, details, completed, status, priority, due_date, category, indent, is_now, ai_processing_status, text, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     stmt.run([
-      todo.id,
-      todo.title,
-      todo.details || null,
-      todo.completed ? 1 : 0,
-      todo.priority || null,
-      todo.dueDate || null,
-      todo.category || null,
-      todo.aiProcessingStatus || null,
-      todo.groupTitleId || null,
-      todo.createdAt || now,
+      item.id,
+      item.type,
+      item.position,
+      item.parentId || null,
+      item.title || null,
+      item.details || null,
+      item.completed ? 1 : 0,
+      item.status || null,
+      item.priority || null,
+      item.dueDate || null,
+      item.category || null,
+      item.indent || 0,
+      item.isNow ? 1 : 0,
+      item.aiProcessingStatus || null,
+      item.text || null,
+      item.createdAt || now,
       now
     ]);
     stmt.free();
 
     saveDatabase();
-    return { ...todo, createdAt: todo.createdAt || now, updatedAt: now };
+    return { ...item, createdAt: item.createdAt || now, updatedAt: now };
   } catch (error) {
-    console.error('Failed to create todo:', error);
+    console.error('Failed to create item:', error);
     throw error;
   }
 });
 
-ipcMain.handle('db:createTodos', (event, todos) => {
+// Create multiple items
+ipcMain.handle('db:createItems', (_, items) => {
   try {
     const now = new Date().toISOString();
     const stmt = db.prepare(`
-      INSERT INTO todos (id, title, details, completed, priority, due_date, category, ai_processing_status, group_title_id, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO items (id, type, position, parent_id, title, details, completed, status, priority, due_date, category, indent, is_now, ai_processing_status, text, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
-    todos.forEach(todo => {
+    items.forEach(item => {
       stmt.run([
-        todo.id,
-        todo.title,
-        todo.details || null,
-        todo.completed ? 1 : 0,
-        todo.priority || null,
-        todo.dueDate || null,
-        todo.category || null,
-        todo.aiProcessingStatus || null,
-        todo.groupTitleId || null,
-        todo.createdAt || now,
+        item.id,
+        item.type,
+        item.position,
+        item.parentId || null,
+        item.title || null,
+        item.details || null,
+        item.completed ? 1 : 0,
+        item.status || null,
+        item.priority || null,
+        item.dueDate || null,
+        item.category || null,
+        item.indent || 0,
+        item.isNow ? 1 : 0,
+        item.aiProcessingStatus || null,
+        item.text || null,
+        item.createdAt || now,
         now
       ]);
     });
 
     stmt.free();
     saveDatabase();
-    return todos;
+    return items;
   } catch (error) {
-    console.error('Failed to create todos:', error);
+    console.error('Failed to create items:', error);
     throw error;
   }
 });
 
-ipcMain.handle('db:updateTodo', (event, id, updates) => {
+// Update an item
+ipcMain.handle('db:updateItem', (_, id, updates) => {
   try {
-    console.log('[updateTodo] id:', id, 'updates:', updates);
     const fields = [];
     const params = [];
 
-    if (updates.title !== undefined) {
-      fields.push('title = ?');
-      params.push(updates.title);
+    if ('type' in updates) {
+      fields.push('type = ?');
+      params.push(updates.type);
     }
-    if (updates.details !== undefined) {
+    if ('position' in updates) {
+      fields.push('position = ?');
+      params.push(updates.position);
+    }
+    if ('title' in updates) {
+      fields.push('title = ?');
+      params.push(updates.title || null);
+    }
+    if ('details' in updates) {
       fields.push('details = ?');
       params.push(updates.details || null);
     }
-    if (updates.completed !== undefined) {
+    if ('completed' in updates) {
       fields.push('completed = ?');
       params.push(updates.completed ? 1 : 0);
     }
-    if (updates.priority !== undefined) {
+    if ('status' in updates) {
+      fields.push('status = ?');
+      params.push(updates.status || null);
+    }
+    if ('priority' in updates) {
       fields.push('priority = ?');
       params.push(updates.priority || null);
     }
-    if (updates.dueDate !== undefined) {
+    if ('dueDate' in updates) {
       fields.push('due_date = ?');
       params.push(updates.dueDate || null);
     }
-    if (updates.category !== undefined) {
+    if ('category' in updates) {
       fields.push('category = ?');
       params.push(updates.category || null);
     }
-    if (updates.aiProcessingStatus !== undefined) {
+    if ('indent' in updates) {
+      fields.push('indent = ?');
+      params.push(updates.indent || 0);
+    }
+    if ('isNow' in updates) {
+      fields.push('is_now = ?');
+      params.push(updates.isNow ? 1 : 0);
+    }
+    if ('aiProcessingStatus' in updates) {
       fields.push('ai_processing_status = ?');
       params.push(updates.aiProcessingStatus || null);
     }
-    if (updates.groupTitleId !== undefined) {
-      fields.push('group_title_id = ?');
-      params.push(updates.groupTitleId || null);
+    if ('text' in updates) {
+      fields.push('text = ?');
+      params.push(updates.text || null);
     }
-    if (updates.createdAt !== undefined) {
-      fields.push('created_at = ?');
-      params.push(updates.createdAt);
+    if ('parentId' in updates) {
+      fields.push('parent_id = ?');
+      params.push(updates.parentId || null);
+    }
+
+    if (fields.length === 0) {
+      return { id };
     }
 
     const now = new Date().toISOString();
@@ -435,190 +963,90 @@ ipcMain.handle('db:updateTodo', (event, id, updates) => {
     params.push(now);
     params.push(id);
 
-    const stmt = db.prepare(`UPDATE todos SET ${fields.join(', ')} WHERE id = ?`);
+    const stmt = db.prepare(`UPDATE items SET ${fields.join(', ')} WHERE id = ?`);
     stmt.run(params);
     stmt.free();
 
     saveDatabase();
-    console.log('[updateTodo] Successfully updated todo:', id);
-    return { id, ...updates };
+    return { id, ...updates, updatedAt: now };
   } catch (error) {
-    console.error('Failed to update todo:', error);
+    console.error('Failed to update item:', error);
     throw error;
   }
 });
 
-ipcMain.handle('db:deleteTodo', (event, id) => {
+// Update positions for multiple items (for drag-and-drop reordering)
+ipcMain.handle('db:updateItemPositions', (event, positionUpdates) => {
   try {
-    const stmt = db.prepare('DELETE FROM todos WHERE id = ?');
+    const stmt = db.prepare('UPDATE items SET position = ?, updated_at = ? WHERE id = ?');
+    const now = new Date().toISOString();
+
+    positionUpdates.forEach(({ id, position }) => {
+      stmt.run([position, now, id]);
+    });
+
+    stmt.free();
+    saveDatabase();
+    return { success: true };
+  } catch (error) {
+    console.error('Failed to update item positions:', error);
+    throw error;
+  }
+});
+
+// Delete an item
+ipcMain.handle('db:deleteItem', (event, id) => {
+  try {
+    const stmt = db.prepare('DELETE FROM items WHERE id = ?');
     stmt.run([id]);
     stmt.free();
     saveDatabase();
+    return { success: true };
   } catch (error) {
-    console.error('Failed to delete todo:', error);
+    console.error('Failed to delete item:', error);
     throw error;
   }
 });
 
-ipcMain.handle('db:toggleTodo', (event, id) => {
+// Toggle completion for a todo item
+ipcMain.handle('db:toggleItem', (event, id) => {
   try {
     const now = new Date().toISOString();
-    const stmt = db.prepare('UPDATE todos SET completed = NOT completed, updated_at = ? WHERE id = ?');
+    const stmt = db.prepare('UPDATE items SET completed = NOT completed, updated_at = ? WHERE id = ?');
     stmt.run([now, id]);
     stmt.free();
 
-    const getTodo = db.prepare('SELECT * FROM todos WHERE id = ?');
-    getTodo.bind([id]);
-    getTodo.step();
-    const row = getTodo.getAsObject();
-    getTodo.free();
+    const getItem = db.prepare('SELECT * FROM items WHERE id = ?');
+    getItem.bind([id]);
+    getItem.step();
+    const row = getItem.getAsObject();
+    getItem.free();
 
     saveDatabase();
-    return { ...row, completed: Boolean(row.completed) };
+    return {
+      id: row.id,
+      type: row.type,
+      position: row.position,
+      completed: Boolean(row.completed),
+      updatedAt: now
+    };
   } catch (error) {
-    console.error('Failed to toggle todo:', error);
+    console.error('Failed to toggle item:', error);
     throw error;
   }
 });
 
-// Titles
-ipcMain.handle('db:getTitles', () => {
+// Get the max position (for adding new items at the end)
+ipcMain.handle('db:getMaxPosition', () => {
   try {
-    const stmt = db.prepare('SELECT * FROM titles ORDER BY created_at ASC');
-    const rows = [];
-    while (stmt.step()) {
-      const row = stmt.getAsObject();
-      rows.push({
-        id: row.id,
-        text: row.text,
-        createdAt: row.created_at
-      });
-    }
+    const stmt = db.prepare('SELECT MAX(position) as maxPos FROM items');
+    stmt.step();
+    const row = stmt.getAsObject();
     stmt.free();
-    return rows;
+    return row.maxPos ?? -1;
   } catch (error) {
-    console.error('Failed to get titles:', error);
-    return [];
-  }
-});
-
-ipcMain.handle('db:createTitle', (event, text) => {
-  try {
-    const id = crypto.randomUUID();
-    const createdAt = new Date().toISOString();
-
-    const stmt = db.prepare('INSERT INTO titles (id, text, created_at) VALUES (?, ?, ?)');
-    stmt.run([id, text, createdAt]);
-    stmt.free();
-
-    saveDatabase();
-    return { id, text, createdAt };
-  } catch (error) {
-    console.error('Failed to create title:', error);
-    throw error;
-  }
-});
-
-ipcMain.handle('db:updateTitle', (event, id, text) => {
-  try {
-    const stmt = db.prepare('UPDATE titles SET text = ? WHERE id = ?');
-    stmt.run([text, id]);
-    stmt.free();
-
-    saveDatabase();
-    return { id, text };
-  } catch (error) {
-    console.error('Failed to update title:', error);
-    throw error;
-  }
-});
-
-ipcMain.handle('db:updateTitleCreatedAt', (event, id, createdAt) => {
-  try {
-    const stmt = db.prepare('UPDATE titles SET created_at = ? WHERE id = ?');
-    stmt.run([createdAt, id]);
-    stmt.free();
-
-    saveDatabase();
-    return { id, createdAt };
-  } catch (error) {
-    console.error('Failed to update title createdAt:', error);
-    throw error;
-  }
-});
-
-ipcMain.handle('db:deleteTitle', (event, id) => {
-  try {
-    const stmt = db.prepare('DELETE FROM titles WHERE id = ?');
-    stmt.run([id]);
-    stmt.free();
-    saveDatabase();
-  } catch (error) {
-    console.error('Failed to delete title:', error);
-    throw error;
-  }
-});
-
-// Separators
-ipcMain.handle('db:getSeparators', () => {
-  try {
-    const stmt = db.prepare('SELECT * FROM separators ORDER BY created_at ASC');
-    const rows = [];
-    while (stmt.step()) {
-      const row = stmt.getAsObject();
-      rows.push({
-        id: row.id,
-        createdAt: row.created_at
-      });
-    }
-    stmt.free();
-    return rows;
-  } catch (error) {
-    console.error('Failed to get separators:', error);
-    return [];
-  }
-});
-
-ipcMain.handle('db:createSeparator', () => {
-  try {
-    const id = crypto.randomUUID();
-    const createdAt = new Date().toISOString();
-
-    const stmt = db.prepare('INSERT INTO separators (id, created_at) VALUES (?, ?)');
-    stmt.run([id, createdAt]);
-    stmt.free();
-
-    saveDatabase();
-    return { id, createdAt };
-  } catch (error) {
-    console.error('Failed to create separator:', error);
-    throw error;
-  }
-});
-
-ipcMain.handle('db:updateSeparatorCreatedAt', (event, id, createdAt) => {
-  try {
-    const stmt = db.prepare('UPDATE separators SET created_at = ? WHERE id = ?');
-    stmt.run([createdAt, id]);
-    stmt.free();
-
-    saveDatabase();
-    return { id, createdAt };
-  } catch (error) {
-    console.error('Failed to update separator createdAt:', error);
-    throw error;
-  }
-});
-
-ipcMain.handle('db:deleteSeparator', (event, id) => {
-  try {
-    const stmt = db.prepare('DELETE FROM separators WHERE id = ?');
-    stmt.run([id]);
-    stmt.free();
-    saveDatabase();
-  } catch (error) {
-    console.error('Failed to delete separator:', error);
-    throw error;
+    console.error('Failed to get max position:', error);
+    return -1;
   }
 });
 
@@ -668,11 +1096,8 @@ ipcMain.handle('transcribe:audio', async (event, audioBuffer) => {
 });
 
 // AI Processing - Process todo text
-ipcMain.handle('ai:process-todo-text', async (event, input, existingTodos) => {
+ipcMain.handle('ai:process-todo-text', async (_, input, existingTodos) => {
   try {
-    if (!processTodoText) {
-      throw new Error('AI functions not loaded yet');
-    }
     return await processTodoText(input, existingTodos);
   } catch (error) {
     console.error('Failed to process todo text:', error);
@@ -680,33 +1105,60 @@ ipcMain.handle('ai:process-todo-text', async (event, input, existingTodos) => {
   }
 });
 
-// AI Processing - Process batch todos
-ipcMain.handle('ai:process-batch-todos', async (event, inputs) => {
-  try {
-    if (!processBatchTodos) {
-      throw new Error('AI functions not loaded yet');
-    }
-    const results = await processBatchTodos(inputs);
-    // Convert Map to array for IPC
-    return Array.from(results.entries()).map(([index, result]) => ({
-      index,
-      ...result
-    }));
-  } catch (error) {
-    console.error('Failed to process batch todos:', error);
-    throw error;
-  }
-});
-
 // AI Processing - Find similar tasks
-ipcMain.handle('ai:find-similar-tasks', async (event, todos) => {
+ipcMain.handle('ai:find-similar-tasks', async (_, todos) => {
   try {
-    if (!findSimilarTasks) {
-      throw new Error('AI functions not loaded yet');
-    }
     return await findSimilarTasks(todos);
   } catch (error) {
     console.error('Failed to find similar tasks:', error);
     throw error;
   }
+});
+
+// ========== Focus Timer IPC Handlers ==========
+
+// Start focus timer with optional duration
+ipcMain.handle('focus:start', (_, duration = 1500) => {
+  focusTimerState.timeRemaining = duration;
+  startFocusTimer();
+  return { success: true, timeRemaining: focusTimerState.timeRemaining };
+});
+
+// Pause focus timer
+ipcMain.handle('focus:pause', () => {
+  if (focusTimerState.intervalId) {
+    clearInterval(focusTimerState.intervalId);
+    focusTimerState.intervalId = null;
+  }
+  focusTimerState.isRunning = false;
+  updateTrayTitle(focusTimerState.timeRemaining); // Shows paused time
+  return { success: true, timeRemaining: focusTimerState.timeRemaining };
+});
+
+// Resume focus timer
+ipcMain.handle('focus:resume', () => {
+  if (!focusTimerState.isRunning && focusTimerState.timeRemaining > 0) {
+    startFocusTimer();
+  }
+  return { success: true, timeRemaining: focusTimerState.timeRemaining };
+});
+
+// Reset focus timer
+ipcMain.handle('focus:reset', () => {
+  if (focusTimerState.intervalId) {
+    clearInterval(focusTimerState.intervalId);
+    focusTimerState.intervalId = null;
+  }
+  focusTimerState.isRunning = false;
+  focusTimerState.timeRemaining = 1500; // Reset to 25 minutes
+  updateTrayTitle(0);
+  return { success: true, timeRemaining: focusTimerState.timeRemaining };
+});
+
+// Get current focus timer state
+ipcMain.handle('focus:getState', () => {
+  return {
+    isRunning: focusTimerState.isRunning,
+    timeRemaining: focusTimerState.timeRemaining
+  };
 });

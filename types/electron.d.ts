@@ -96,6 +96,16 @@ export interface ElectronAPI {
   onUpdateAvailable?: (callback: (info: UpdateInfo) => void) => void;
   onDownloadProgress?: (callback: (progress: DownloadProgress) => void) => void;
   onUpdateDownloaded?: (callback: (info: UpdateInfo) => void) => void;
+
+  // Focus Timer
+  startFocusTimer: (duration?: number) => Promise<{ success: boolean; timeRemaining: number }>;
+  pauseFocusTimer: () => Promise<{ success: boolean; timeRemaining: number }>;
+  resumeFocusTimer: () => Promise<{ success: boolean; timeRemaining: number }>;
+  resetFocusTimer: () => Promise<{ success: boolean; timeRemaining: number }>;
+  getFocusState: () => Promise<{ isRunning: boolean; timeRemaining: number }>;
+  onFocusTimerTick: (callback: (timeRemaining: number) => void) => void;
+  onFocusTimerComplete: (callback: () => void) => void;
+  removeFocusTimerListeners: () => void;
 }
 
 declare global {

@@ -1,781 +1,727 @@
-# Intelligent Todo App - Technical Documentation
+# Notes List - Complete Application Documentation
 
-## Table of Contents
-1. [Overview](#overview)
-2. [Architecture](#architecture)
-3. [Technology Stack](#technology-stack)
-4. [Project Structure](#project-structure)
-5. [Core Components](#core-components)
-6. [Data Flow](#data-flow)
-7. [AI Integration](#ai-integration)
-8. [Features](#features)
-9. [Type Definitions](#type-definitions)
-10. [Configuration](#configuration)
-11. [Development Guide](#development-guide)
+A sophisticated cross-platform todo application built with **Next.js 16 + Electron + AI**.
 
 ---
 
-## Overview
+## 🏗️ Architecture Summary
 
-The Intelligent Todo App is a modern, AI-powered task management application built with Next.js 16 and React 19. It leverages natural language processing to allow users to create, update, and manage tasks using conversational input. The application intelligently parses user input to extract task details, priorities, due dates, and categories without requiring rigid form inputs.
-
-### Key Highlights
-- Natural language input processing using OpenAI GPT-4o-mini
-- Voice input support using Web Speech API
-- Smart task matching and updates
-- Responsive UI with dark/light theme support
-- Real-time feedback and processing states
-- Expandable task details with metadata
+```
+┌─────────────────────────────────────────────────────────┐
+│                    TodoApp (Orchestrator)               │
+│   Manages state, coordinates views, handles AI input    │
+└──────────────────────────┬──────────────────────────────┘
+                           │
+       ┌───────────────────┼───────────────────┐
+       │                   │                   │
+       ▼                   ▼                   ▼
+ TodoTextEditor      TodoKanbanView        TodoInput
+   (List View)        (Board View)        (AI + Voice)
+       │                   │                   │
+       └───────────────────┴───────────────────┘
+                           │
+                     Zustand Store
+                           │
+              ┌────────────┴────────────┐
+              │                         │
+        Electron IPC              Web In-Memory
+        (Desktop DB)               (Browser)
+```
 
 ---
 
-## Architecture
+## 📁 Project Structure
 
-The application follows a modern React architecture with the following patterns:
+```
+v0-intelligent-todo-app/
+├── app/                          # Next.js App Router directory
+│   ├── api/                      # API routes (server-side)
+│   │   ├── process-todo-text/    # AI text processing for todos
+│   │   ├── find-similar-tasks/   # Task deduplication/merge suggestions
+│   │   └── transcribe/           # Audio transcription via Whisper
+│   ├── page.tsx                  # Main entry point
+│   ├── layout.tsx                # Root layout with theme provider
+│   └── globals.css               # Global styles
+├── components/                   # React components
+│   ├── todo-app.tsx              # Main app container (orchestrator)
+│   ├── todo-text-editor.tsx      # List view with drag-and-drop
+│   ├── todo-kanban-view.tsx      # Kanban board view
+│   ├── todo-input.tsx            # AI input and voice recording interface
+│   ├── todo-sidebar.tsx          # Detail sidebar and category manager
+│   ├── changelog-dialog.tsx      # AI-proposed changes review interface
+│   ├── merge-button.tsx          # Duplicate detection/merge trigger
+│   ├── focus-mode-overlay.tsx    # Distraction-free focus timer UI
+│   ├── draggable-item.tsx        # Drag handle wrapper
+│   ├── sortable-item.tsx         # dnd-kit sortable wrapper
+│   ├── theme-provider.tsx        # next-themes integration
+│   ├── update-notifier.tsx       # Auto-update notifications (Electron)
+│   └── ui/                       # Radix UI component library
+│       ├── task-item.tsx         # Reusable todo/title renderer
+│       ├── kanban.tsx            # Kanban column/card components
+│       ├── collapsible-header.tsx # Group headers for grouping
+│       ├── metadata-badges.tsx   # Priority/category badges
+│       └── [20+ other UI components]
+├── hooks/                        # Custom React hooks
+│   ├── use-focus-manager.ts      # Unified focus/navigation for lists
+│   ├── use-focus-timer.ts        # Focus timer state + Electron sync
+│   └── use-mobile.ts             # Responsive design detection
+├── lib/                          # Core business logic
+│   ├── store.ts                  # Zustand state management (main app state)
+│   ├── types.ts                  # TypeScript type definitions
+│   ├── electron/
+│   │   └── database.ts           # Database abstraction layer (Electron/web)
+│   ├── electron-api.ts           # Type-safe Electron IPC interface
+│   ├── api-bridge.ts             # Client-side API request wrapper
+│   ├── process-todos.ts          # AI text-to-todo conversion
+│   ├── process-batch-todos.ts    # Batch processing for efficiency
+│   ├── process-single-todo.ts    # Single todo enhancement
+│   ├── find-similar-tasks.ts     # Semantic task deduplication
+│   ├── ai-queue-manager.ts       # Queue & batch system for AI calls
+│   ├── grouping.ts               # Centralized grouping engine (5 strategies)
+│   ├── format.ts                 # Date formatting and categorization
+│   ├── utils.ts                  # Utility functions (cn for Tailwind merge)
+│   └── hooks/
+│       └── use-debounced-callback.ts
+├── styles/
+│   └── globals.css               # Global Tailwind styles
+├── types/
+│   └── electron.d.ts             # Electron API TypeScript definitions
+├── package.json                  # Project dependencies and build config
+├── tsconfig.json                 # TypeScript configuration
+├── next.config.mjs               # Next.js configuration
+├── postcss.config.mjs            # Tailwind + PostCSS setup
+├── components.json               # shadcn/ui configuration
+└── README.md                     # Project documentation
+```
 
-### Client-Server Separation
-- **Client Components**: Interactive UI components marked with `"use client"`
-- **Server Actions**: AI processing happens server-side for security and performance
+---
+
+## 📁 Key Files & Purposes
+
+| File | Purpose |
+|------|---------|
+| `app/page.tsx` | Entry point - renders `<TodoApp />` |
+| `components/todo-app.tsx` | Main orchestrator - loads data, manages views |
+| `components/todo-text-editor.tsx` | List view with drag-drop, inline editing |
+| `components/todo-kanban-view.tsx` | Kanban board with 5 grouping strategies |
+| `components/todo-input.tsx` | AI natural language input + voice recording |
+| `components/todo-sidebar.tsx` | Detail panel for selected todo |
+| `components/changelog-dialog.tsx` | Review AI-proposed changes before applying |
+| `lib/store.ts` | **Zustand state management** - all app state |
+| `lib/types.ts` | TypeScript definitions for Item, Todo, etc. |
+| `lib/grouping.ts` | Centralized grouping engine |
+| `lib/electron/database.ts` | Database abstraction (Electron/Web) |
+| `hooks/use-focus-manager.ts` | Keyboard navigation for lists |
+
+---
+
+## 🔧 Tech Stack
+
+| Category | Technologies |
+|----------|-------------|
+| **Framework** | Next.js 16, React 19, TypeScript |
+| **State** | Zustand with persistence |
+| **UI** | Radix UI, shadcn/ui, Tailwind CSS 4 |
+| **Drag & Drop** | @dnd-kit (core, sortable, utilities) |
+| **AI** | Vercel AI SDK, OpenAI (gpt-4o-mini, Whisper) |
+| **Desktop** | Electron 39, auto-updates |
+| **Forms** | React Hook Form, Zod validation |
+| **Animation** | Motion (framer-motion) |
+| **Icons** | Lucide React, Phosphor Icons |
+| **Date** | date-fns, React Day Picker |
+| **Charts** | Recharts |
+
+---
+
+## 📊 Data Model
+
+### Core Item Type
+
+The unified **Item** type is the single source of truth for all entities:
+
+```typescript
+interface Item {
+  id: string
+  type: "todo" | "title" | "separator"    // ItemType
+  position: number                         // Ordering
+  parentId?: string                        // For sub-tasks/projects
+
+  // Todo-specific
+  title?: string
+  details?: string
+  completed?: boolean
+  status?: "due" | "in-progress" | "done"
+  priority?: "low" | "medium" | "high"
+  dueDate?: string                         // ISO format
+  category?: string                        // Tag
+  indent?: number                          // Nesting level
+  isNow?: boolean                          // Focus group marker
+  aiProcessingStatus?: "pending" | "processing" | "enhanced" | "failed"
+
+  // Title-specific
+  text?: string
+
+  // Metadata
+  createdAt: string
+  updatedAt?: string
+}
+```
+
+### AI Processing Types
+
+```typescript
+interface ProposedChange {
+  id: string
+  type: "add" | "update" | "delete" | "merge" | "complete" | "uncomplete"
+  newTodo?: Todo
+  existingTodo?: Todo
+  updates?: Partial<Todo>
+  mergeGroup?: {
+    sourceTodos: Todo[]
+    mergedResult: Todo
+    similarityReason: string
+    confidenceScore: number
+  }
+  deleteTodo?: Todo
+  reason?: string
+}
+
+interface ChangelogSession {
+  id: string
+  source: "ai-input" | "merge-button" | "manual"
+  inputText?: string
+  changes: ProposedChange[]
+  createdAt: string
+}
+```
+
+### Grouping Types
+
+```typescript
+type GroupBy = "position" | "dueDate" | "priority" | "category" | "project" | "status"
+type KanbanGroupBy = "dueDate" | "priority" | "category" | "project" | "status"
+type ViewMode = "list" | "kanban"
+
+interface ItemGroup {
+  key: string
+  label: string
+  items: Item[]
+  totalCount?: number
+  metadata?: {
+    color?: string
+    isCollapsible?: boolean
+    showEmpty?: boolean
+    titleItem?: Item
+  }
+}
+```
+
+---
+
+## 🌐 API Routes
+
+### `/api/process-todo-text`
+
+**Purpose:** Parse natural language into structured todos
+
+**Method:** POST
+
+**Request Body:**
+```typescript
+{
+  input: string           // User's text input
+  existingTodos: Todo[]   // Current todos for context
+}
+```
+
+**Response:**
+```typescript
+{
+  newTodos: Todo[]        // New todos to create
+  updates: Array<{        // Updates to existing todos
+    id: string
+    updates: Partial<Todo>
+  }>
+}
+```
+
+**Details:**
+- Uses Vercel AI SDK + OpenAI gpt-4o-mini
+- Max duration: 60 seconds
+- Input truncation: 4000 characters max
+- Extracts actionable items from meeting transcripts, conversations, notes
+- Matches against existing todos semantically
+- Detects completion (past tense → completed:true)
+
+---
+
+### `/api/find-similar-tasks`
+
+**Purpose:** Find duplicate/similar tasks for merging
+
+**Method:** POST
+
+**Request Body:**
+```typescript
+{ todos: Todo[] }
+```
+
+**Response:**
+```typescript
+{
+  groups: Array<{
+    taskIds: string[]              // IDs of similar tasks
+    primaryTaskId: string          // Most complete task
+    similarityReason: string       // Why grouped
+    confidenceScore: number        // 0-100
+    suggestedMerge: {              // Merged result
+      title: string
+      details?: string
+      priority?: Priority
+      dueDate?: string
+      category?: string
+    }
+  }>
+}
+```
+
+**Details:**
+- Uses gpt-4o-mini for semantic analysis
+- Only groups tasks with confidence > 70%
+- Combines all unique information from grouped tasks
+
+---
+
+### `/api/transcribe`
+
+**Purpose:** Convert audio to text
+
+**Method:** POST (multipart/form-data)
+
+**Request:** `audio` file (FormData)
+
+**Response:** `{ text: string }`
+
+**Details:**
+- Uses OpenAI Whisper v1
+- Direct file streaming
+
+---
+
+## 🗄️ State Management
+
+### Zustand Store (`lib/store.ts`)
+
+**Single Source of Truth for:**
+- All items (todos, titles, separators) - `items: Item[]`
+- Selection state - `selectedTodoId`, `selectedTitleId`
+- UI preferences - `viewMode`, `kanbanGroupBy`, `showMetadata`, `showCompleted`, `listGroupBy`
+- Focus mode state - `isFocusMode`, `focusTimeRemaining`, `focusTimerRunning`, `distractionNotes`
+- Changelog/AI state - `changelogSession`, `showChangelog`
+
+**Persistence:**
+- Uses Zustand `persist` middleware
+- Only persists UI preferences (not items - handled by database)
+- localStorage key: `"todo-app-ui-preferences"`
+
+**Key Actions:**
+
+| Action | Purpose |
+|--------|---------|
+| `loadItems()` | Load all items from database |
+| `addItem()` | Create a new item |
+| `updateItem()` | Update an existing item |
+| `updateItemDebounced()` | Update with 300ms debounce |
+| `deleteItem()` | Delete an item |
+| `toggleItem()` | Toggle todo completion |
+| `reorderItems()` | Update positions after drag |
+| `selectTodo()` | Select a todo for sidebar |
+| `applyChanges()` | Apply AI-proposed changes |
+| `setFocusMode()` | Enter/exit focus mode |
+| `toggleNow()` | Toggle isNow flag on todo |
+
+**Derived State (Hooks):**
+
+| Hook | Purpose |
+|------|---------|
+| `useTodos()` | Filtered, converted todo items |
+| `useTitles()` | Title items only |
+| `useSortedItems()` | Items sorted by position |
+| `useSelectedTodo()` | Current selected todo |
+| `useCategories()` | Unique categories |
+| `useNowTodos()` | Todos marked with isNow |
+
+---
+
+## 🎯 Grouping System
+
+The centralized grouping engine (`lib/grouping.ts`) supports 5 strategies:
+
+### 1. Position (Default)
+- Items in document order
+- Titles create collapsible subgroups
+- Separators create boundaries
+
+### 2. Due Date
+Categories: `now`, `overdue`, `today`, `tomorrow`, `this-week`, `later`, `no-date`
+- Uses `getDueDateCategory()` to classify
+- Supports "Now" group via `isNow` flag
+- Empty groups always shown: now, today, tomorrow
+
+### 3. Priority
+Categories: `high`, `medium`, `low`, `none`
+- Colors: red, amber, green, gray
+
+### 4. Status
+Categories: `due`, `in-progress`, `done`
+- Derived from `completed` flag if `status` not set
+
+### 5. Category (Tags)
+- Dynamic columns from unique category values
+- "Uncategorized" group for todos without category
+
+### 6. Project (Titles)
+- Groups todos by title above them
+- "No Project" group for ungrouped todos
+
+**API:**
+```typescript
+function groupItems(items: Item[], groupBy: GroupBy, options?: GroupingOptions): ItemGroup[]
+function useGroupedItems(items: Item[], groupBy: GroupBy, options?: GroupingOptions): ItemGroup[]
+```
+
+---
+
+## 🎨 Component Hierarchy
+
+### TodoApp (Main Orchestrator)
+- Loads initial data via `loadItems()`
+- Manages UI state (viewMode, hideCompleted, kanbanGroupBy)
+- Handles focus mode timer
+- Coordinates AI input, changelog, and merge operations
+
+### TodoTextEditor (List View)
+- Uses `@dnd-kit` for drag-and-drop sorting
+- Groups items via `useGroupedItems`
+- Renders SortableItem wrappers containing TaskItem components
+- Supports inline editing and keyboard navigation
+
+### TodoKanbanView (Board View)
+- Renders columns based on groupBy strategy
+- Reuses same `useGroupedItems` hook
+- Maps groups to KanbanColumn components
+- Supports add-todo-to-column and drag between columns
+
+### TodoInput (AI Interface)
+- Text input with optional voice recording
+- Calls `/api/process-todo-text` to parse natural language
+- Shows audio visualization while recording
+- Proposes changes through ChangelogDialog
+
+### ChangelogDialog (Review Changes)
+- Displays AI-proposed changes before applying
+- Shows what will be created, updated, deleted, or merged
+- User can approve/reject individual changes
+
+### TodoSidebar (Details Panel)
+- Shows selected todo's full details
+- Allows inline editing of metadata
+- Lists all categories with rename/delete capabilities
+
+### FocusModeOverlay (Focus Mode)
+- Full-screen overlay with countdown timer
+- Text area for distraction notes
+- Can pause/resume/reset timer
+
+---
+
+## 🔌 Database & Persistence
+
+### Dual-Mode Architecture
+
+**Electron Mode:** Delegates to `window.electronDB` (IPC calls to main process)
+
+**Web Mode:** Falls back to `WebDatabase` (in-memory)
+
+### API Interface
+
+```typescript
+interface ElectronAPI {
+  // Items
+  getItems(): Promise<Item[]>
+  createItem(item: Item): Promise<Item>
+  createItems(items: Item[]): Promise<Item[]>
+  updateItem(id: string, updates: Partial<Item>): Promise<void>
+  updateItemPositions(updates: {id: string; position: number}[]): Promise<void>
+  deleteItem(id: string): Promise<void>
+  toggleItem(id: string): Promise<Item | null>
+  getMaxPosition(): Promise<number>
+
+  // AI Processing
+  transcribeAudio(audioBuffer: ArrayBuffer): Promise<string>
+  processTodoText(input: string, existingTodos: Todo[]): Promise<ProposedChange[]>
+  findSimilarTasks(todos: Todo[]): Promise<ProposedChange[]>
+
+  // Auto-updates
+  checkForUpdates(): Promise<void>
+  downloadUpdate(): Promise<void>
+  installUpdate(): Promise<void>
+
+  // Focus Timer
+  startFocusTimer(duration?: number): Promise<{success: boolean; timeRemaining: number}>
+  pauseFocusTimer(): Promise<{...}>
+  resumeFocusTimer(): Promise<{...}>
+  resetFocusTimer(): Promise<{...}>
+  getFocusState(): Promise<{isRunning: boolean; timeRemaining: number}>
+}
+```
+
+---
+
+## 🪝 Custom Hooks
+
+### `use-focus-manager.ts`
+Unified keyboard navigation for lists:
+- Focus by ID, prev/next, first/last
+- Edit mode tracking
+- Input ref registration for manual focus
+- Pending focus scheduling for after re-renders
+
+### `use-focus-timer.ts`
+Focus mode timer management:
+- Syncs with Electron main process
+- Listens to timer ticks and completion events
+- Start/pause/resume/reset/end methods
+- Time formatting (MM:SS)
+
+### `use-mobile.ts`
+Responsive design detection for mobile layouts
+
+---
+
+## ⚡ Key Features
+
+### Core Todo Management
+- Create, read, update, delete todos
+- Mark complete/incomplete
+- Drag-and-drop reordering
+- Undo/redo (via changelogSession)
+
+### Metadata
+- Priority (low/medium/high)
+- Due date with smart categorization
+- Category/tags
+- Details/notes
+- AI processing status
+
+### View Modes
+- List view (document-based with titles/separators)
+- Kanban board (5 grouping strategies)
+
+### AI Features
+- Natural language todo creation
+- Meeting transcript parsing
+- Duplicate detection & merge suggestions
+- Voice-to-todo (via transcription)
+
+### Focus Mode
+- Distraction-free timer (25min Pomodoro default)
+- Darkened overlay
+- Capture distraction notes
+- Timer synced with Electron main process
+
+### Organization
+- Group by due date, priority, status, category, project
+- Collapse/expand groups
+- Hide completed todos
+- Multiple projects (via titles)
+
+### Cross-Platform
+- Web app (Vercel deployment)
+- Desktop app (Electron with auto-updates)
+
+### Theme
+- Light/dark mode (next-themes)
+- System preference detection
+
+---
+
+## 📦 Dependencies
+
+### Core
+- `next` 16.0.0 - Full-stack React framework
+- `react` 19.2.0 - UI library
+- `typescript` 5.x - Type-safe JavaScript
 
 ### State Management
-- Local React state using `useState` hook
-- No external state management library (Redux, Zustand, etc.)
-- Props drilling for component communication
+- `zustand` 5.0.9 - Lightweight state management
 
-### Component Hierarchy
+### UI Components
+- `@radix-ui/*` - 20+ headless UI primitives
+- `lucide-react` 0.454.0 - Icon library
+- `@phosphor-icons/react` 2.1.10 - Alternative icons
+
+### Styling
+- `tailwindcss` 4.1.9 - Utility-first CSS
+- `class-variance-authority` 0.7.1 - Component variants
+- `tailwind-merge` 2.5.5 - Class merging
+
+### Drag & Drop
+- `@dnd-kit/core` 6.3.1
+- `@dnd-kit/sortable` 10.0.0
+- `@dnd-kit/utilities` 3.2.2
+
+### Forms
+- `react-hook-form` 7.60.0 - Form handling
+- `zod` 3.25.76 - Schema validation
+- `@hookform/resolvers` 3.10.0 - Validation resolvers
+
+### AI
+- `ai` - Vercel AI SDK
+- `@ai-sdk/openai` 2.0.68 - OpenAI provider
+- `openai` 6.9.1 - Official OpenAI client
+
+### Desktop
+- `electron` 39.2.2 - Desktop framework
+- `electron-builder` 26.0.12 - App packaging
+- `electron-store` 11.0.2 - Persistent storage
+- `electron-updater` 6.6.2 - Auto-updates
+
+### Utilities
+- `date-fns` 4.1.0 - Date manipulation
+- `clsx` 2.1.1 - Conditional classes
+- `cmdk` 1.0.4 - Command menu
+- `sonner` 1.7.4 - Toast notifications
+- `motion` 12.23.25 - Animations
+
+---
+
+## 🔄 Application Flow
+
 ```
-Page (app/page.tsx)
-└── TodoApp (components/todo-app.tsx)
-    ├── TodoInput (components/todo-input.tsx)
-    └── TodoList (components/todo-list.tsx)
-        └── TodoItem (internal component)
+User Input (Text or Voice)
+         ↓
+    TodoInput Component
+         ↓
+    /api/process-todo-text (or transcribe)
+         ↓
+    OpenAI gpt-4o-mini Processing
+         ↓
+    AI Queue Manager (batch collection)
+         ↓
+    ChangelogDialog (review proposals)
+         ↓
+    User Approval
+         ↓
+    store.applyChanges()
+         ↓
+    Update Zustand Store
+         ↓
+    Persist to Database (Electron IPC or Web)
+         ↓
+    UI Re-render
+         ↓
+    TodoTextEditor or TodoKanbanView
+         ↓
+    Display updated todos
 ```
 
 ---
 
-## Technology Stack
+## 🛠️ Development
 
-### Frontend Framework
-- **Next.js 16.0.0**: React framework with App Router
-- **React 19.2.0**: UI library with latest features
-- **TypeScript 5**: Type safety and developer experience
+### Package Manager
+- **pnpm** 10.20.0+ (enforced via `packageManager` field)
 
-### UI Components & Styling
-- **Radix UI**: Headless accessible component primitives
-  - Checkbox, Dialog, Dropdown Menu, Popover, etc.
-- **Tailwind CSS 4.1.9**: Utility-first CSS framework
-- **Lucide React**: Icon library (Sparkles, Loader2, Calendar, etc.)
-- **class-variance-authority**: Component variant management
-- **clsx & tailwind-merge**: Conditional className utilities
+### Node Version
+- **Node.js** 20.0.0+
 
-### AI & Data Processing
-- **Vercel AI SDK (ai)**: AI integration framework
-- **OpenAI GPT-4o-mini**: Natural language understanding model
-- **Zod 3.25.76**: Schema validation and type inference
-
-### Additional Features
-- **next-themes**: Dark/light theme management
-- **Web Speech API**: Browser-based voice recognition
-- **date-fns**: Date manipulation and formatting
-
-### Development Tools
-- **pnpm**: Package manager
-- **ESLint**: Code linting
-- **PostCSS**: CSS processing
-
----
-
-## Project Structure
-
-```
-/
-├── app/                          # Next.js App Router
-│   ├── layout.tsx               # Root layout with fonts and analytics
-│   ├── page.tsx                 # Home page with TodoApp
-│   └── globals.css              # Global styles
-│
-├── components/                   # React components
-│   ├── todo-app.tsx             # Main container component
-│   ├── todo-input.tsx           # Input component with voice support
-│   ├── todo-list.tsx            # List display and todo items
-│   ├── theme-provider.tsx       # Theme context provider
-│   └── ui/                      # Reusable UI primitives
-│       ├── badge.tsx
-│       ├── button.tsx
-│       ├── card.tsx
-│       ├── checkbox.tsx
-│       └── textarea.tsx
-│
-├── lib/                         # Utilities and business logic
-│   ├── types.ts                 # TypeScript type definitions
-│   ├── process-todos.ts         # AI processing server action
-│   └── utils.ts                 # Utility functions
-│
-├── styles/                      # Additional stylesheets
-│   └── globals.css
-│
-├── public/                      # Static assets
-│
-├── package.json                 # Dependencies and scripts
-├── tsconfig.json               # TypeScript configuration
-├── next.config.mjs             # Next.js configuration
-├── postcss.config.mjs          # PostCSS configuration
-├── components.json             # UI components configuration
-└── README.md                   # Project README
-```
-
----
-
-## Core Components
-
-### 1. TodoApp (`components/todo-app.tsx`)
-
-**Purpose**: Main container component that manages global todo state and coordinates child components.
-
-**State Management**:
-```typescript
-const [todos, setTodos] = useState<Todo[]>([])
-const [isProcessing, setIsProcessing] = useState(false)
-```
-
-**Key Functions**:
-- `handleAddTodos(newTodos: Todo[])`: Adds new todos to the list
-- `handleUpdateTodo(id, updates)`: Updates specific todo fields
-- `handleDeleteTodo(id)`: Removes a todo from the list
-- `handleToggleTodo(id)`: Toggles completion status
-
-**File Location**: `components/todo-app.tsx:8-40`
-
----
-
-### 2. TodoInput (`components/todo-input.tsx`)
-
-**Purpose**: Handles user input via text or voice, processes natural language, and provides feedback.
-
-**Props**:
-```typescript
-interface TodoInputProps {
-  existingTodos: Todo[]
-  onAddTodos: (todos: Todo[]) => void
-  onUpdateTodo: (id: string, updates: Partial<Todo>) => void
-  isProcessing: boolean
-  setIsProcessing: (processing: boolean) => void
-}
-```
-
-**Features**:
-- Text input with auto-resize textarea
-- Voice recognition using Web Speech API
-- Real-time processing feedback
-- Keyboard shortcut support (Cmd/Ctrl+Enter)
-- Visual state indicators (listening, processing, success, error)
-
-**Voice Recognition Flow** (`components/todo-input.tsx:29-65`):
-1. Check browser support for SpeechRecognition
-2. Initialize recognition instance with US English
-3. Handle speech results and append to input
-4. Error handling with user feedback
-5. Auto-stop after speech ends
-
-**Submit Handler** (`components/todo-input.tsx:79-129`):
-1. Validate input is not empty
-2. Call `processTodoText` server action
-3. Handle new todos and updates separately
-4. Provide detailed feedback to user
-5. Clear input and auto-hide feedback after 4 seconds
-
-**File Location**: `components/todo-input.tsx:1-215`
-
----
-
-### 3. TodoList (`components/todo-list.tsx`)
-
-**Purpose**: Displays todos in categorized sections (Active/Completed) with expand/collapse functionality.
-
-**Props**:
-```typescript
-interface TodoListProps {
-  todos: Todo[]
-  onToggle: (id: string) => void
-  onDelete: (id: string) => void
-  onUpdate: (id: string, updates: Partial<Todo>) => void
-}
-```
-
-**Layout Logic**:
-- Separates active and completed todos
-- Shows empty state when no todos exist
-- Displays count for each section
-- Renders individual TodoItem components
-
-**TodoItem Component** (`components/todo-list.tsx:66-162`):
-- Checkbox for completion toggle
-- Expandable details section
-- Priority, due date, and category badges
-- Delete button
-- Conditional styling based on completion status
-
-**File Location**: `components/todo-list.tsx:1-163`
-
----
-
-### 4. AI Processing (`lib/process-todos.ts`)
-
-**Purpose**: Server-side AI processing of natural language input to create or update todos.
-
-**Key Function**:
-```typescript
-async function processTodoText(
-  input: string,
-  existingTodos: Todo[]
-): Promise<ProcessResult>
-```
-
-**AI Model**: OpenAI GPT-4o-mini via Vercel AI SDK
-
-**Schema Validation**:
-```typescript
-const TodoSchema = z.object({
-  title: z.string(),
-  details: z.string().optional(),
-  priority: z.enum(["low", "medium", "high"]).optional(),
-  dueDate: z.string().optional(),
-  category: z.string().optional(),
-  completed: z.boolean().optional(),
-})
-
-const ProcessResultSchema = z.object({
-  newTodos: z.array(TodoSchema),
-  updates: z.array(z.object({
-    matchedTodoId: z.string(),
-    updates: TodoSchema.partial(),
-    reason: z.string(),
-  })),
-})
-```
-
-**Smart Matching Rules** (`lib/process-todos.ts:45-57`):
-- Semantic similarity matching (e.g., "grocery shopping" = "buy groceries")
-- Category-based matching
-- Priority-based matching
-- Due date proximity matching
-- Flexible wording variations
-
-**Completion Keywords**:
-- Set `completed: true`: "complete", "finish", "done", "check off", "mark done"
-- Set `completed: false`: "uncomplete", "reopen", "undo", "mark incomplete"
-
-**Priority Detection**:
-- **High**: "urgent", "important", "asap", "critical"
-- **Medium**: "medium", "normal"
-- **Low**: "low", "whenever", "someday"
-
-**Date Parsing Examples**:
-- "tomorrow" → next day
-- "next week" → 7 days from now
-- "in 3 days" → 3 days from now
-- "Monday" → next Monday
-- "end of month" → last day of current month
-
-**File Location**: `lib/process-todos.ts:1-92`
-
----
-
-## Data Flow
-
-### Creating New Todos
-
-```
-User Input (text/voice)
-    ↓
-TodoInput component
-    ↓
-processTodoText(input, existingTodos) [Server Action]
-    ↓
-OpenAI GPT-4o-mini API
-    ↓
-Structured Response (newTodos, updates)
-    ↓
-TodoInput handlers
-    ↓
-TodoApp.handleAddTodos()
-    ↓
-State Update
-    ↓
-TodoList Re-render
-```
-
-### Updating Existing Todos
-
-```
-User Input: "mark grocery task as done"
-    ↓
-AI matches existing todo by semantic similarity
-    ↓
-Returns update with matchedTodoId and updates
-    ↓
-TodoApp.handleUpdateTodo(id, updates)
-    ↓
-State Update (map over todos)
-    ↓
-TodoList Re-render with updated item
-```
-
-### Toggle Completion (Direct)
-
-```
-User clicks checkbox
-    ↓
-TodoList.onToggle(id)
-    ↓
-TodoApp.handleToggleTodo(id)
-    ↓
-State Update (toggle completed field)
-    ↓
-TodoList Re-render
-```
-
----
-
-## AI Integration
-
-### Configuration
-
-The AI integration uses the Vercel AI SDK with OpenAI's GPT-4o-mini model. This requires environment variables for API authentication:
-
+### Scripts
 ```bash
-# .env (not committed to version control)
-OPENAI_API_KEY=your_api_key_here
+pnpm dev          # Start Next.js dev server
+pnpm build        # Build for production
+pnpm electron:dev # Start Electron in dev mode
+pnpm electron:build:mac # Build macOS app
 ```
 
-### generateObject API
+### Configuration Files
 
-The `generateObject` function from Vercel AI SDK provides:
-- Type-safe structured output using Zod schemas
-- Automatic retries and error handling
-- Streaming support (not used in this app)
-
-**Usage** (`lib/process-todos.ts:30-72`):
-```typescript
-const { object } = await generateObject({
-  model: "openai/gpt-4o-mini",
-  schema: ProcessResultSchema,
-  prompt: `...detailed instructions...`,
-})
-```
-
-### Prompt Engineering
-
-The prompt includes:
-1. Role definition ("You are a smart todo assistant")
-2. Task instructions (create, update, mark complete)
-3. Formatting rules (title vs details separation)
-4. Context (existing todos with full metadata)
-5. Smart matching rules with examples
-6. Completion keywords
-7. Date parsing examples
-8. Priority detection rules
-
-This comprehensive prompt ensures consistent and accurate AI responses.
+| File | Purpose |
+|------|---------|
+| `package.json` | Dependencies and scripts |
+| `tsconfig.json` | TypeScript configuration |
+| `next.config.mjs` | Next.js configuration |
+| `postcss.config.mjs` | Tailwind CSS setup |
+| `components.json` | shadcn/ui configuration |
+| `electron-builder.yml` | Electron build config |
 
 ---
 
-## Features
+## 🧹 Code Quality & Architecture Notes
 
-### 1. Natural Language Processing
-- Parse free-form text input
-- Extract task titles, details, priorities, dates, and categories
-- Handle multiple tasks in a single input
-- Understand context and intent
+### Recent Improvements
 
-**Example Inputs**:
-- "Buy groceries tomorrow at 3pm"
-- "Add urgent meeting prep for Monday"
-- "Mark the design task as high priority"
-- "Complete the grocery shopping task"
+1. **Consolidated `GroupBy` type** - Single definition in `lib/grouping.ts` (was duplicated in `types.ts`)
+2. **Simplified TaskItem API** - Removed deprecated `editable`, `onClick`, `onFocus`, `onMetadataClick` props. Use `mode` and `onSelect` instead.
+3. **Reduced boilerplate** - Removed unnecessary wrapper handlers in `todo-app.tsx`
+4. **Replaced boolean flags with explicit enums** for better code clarity:
+   - `hideCompleted: boolean` → `showCompleted: boolean` (positive naming, less cognitive load)
+   - `groupByDueDate: boolean` → `listGroupBy: ListGroupBy` (`"position" | "dueDate"`)
+5. **Removed @deprecated warnings** from `Todo`/`Title` types - they serve a valid purpose as view types for component props
+6. **TodoTextEditor now uses Zustand store directly** - Reduced from 13+ props to just `onStartFocus`. Component accesses store for `items`, `showMetadata`, `showCompleted`, `listGroupBy`, and all actions.
+7. **Consolidated AI files into `lib/ai/`** - All AI processing code now in one directory with clean re-exports via `lib/ai/index.ts`.
 
-### 2. Voice Input
-- Browser-based speech recognition
-- Real-time transcription
-- Visual feedback during listening
-- Error handling with fallback to text input
+### TaskItem Mode System
 
-**Browser Support**: Chrome, Edge, Safari (via WebKit Speech API)
-
-### 3. Smart Task Management
-- Create new tasks
-- Update existing tasks by semantic matching
-- Mark tasks complete/incomplete
-- Delete tasks
-- Toggle task completion
-
-### 4. Task Metadata
-- **Priority**: Low, Medium, High (color-coded badges)
-- **Due Date**: ISO format with localized display
-- **Category**: Custom tags for organization
-- **Details**: Extended notes and context
-- **Created At**: Automatic timestamp
-
-### 5. UI/UX Features
-- Expandable task details
-- Empty state messaging
-- Real-time processing feedback
-- Success/error notifications
-- Responsive design
-- Accessible components (Radix UI)
-- Theme support (via next-themes)
-
-### 6. Keyboard Shortcuts
-- **Cmd/Ctrl+Enter**: Submit input
-
----
-
-## Type Definitions
-
-### Todo Interface (`lib/types.ts:1-10`)
+The `TaskItem` component uses a `mode` prop for edit behavior:
 
 ```typescript
-export interface Todo {
-  id: string                    // UUID v4
-  title: string                 // One-line task description
-  details?: string              // Extended notes and context
-  completed: boolean            // Completion status
-  priority?: "low" | "medium" | "high"  // Task priority
-  dueDate?: string             // ISO 8601 date string
-  category?: string            // Custom category/tag
-  createdAt: string            // ISO 8601 timestamp
-}
+mode: "always" | "toggle" | "readonly"
 ```
 
-### TodoUpdate Interface (`lib/types.ts:12-15`)
+- `"always"` - Input always visible (list view behavior)
+- `"toggle"` - Input shown only when `isEditing=true` (kanban behavior)
+- `"readonly"` - Display only, no editing
+
+### Known Technical Debt
+
+#### 1. Focus State Could Be Grouped
+Five separate state fields for focus mode could be consolidated:
 
 ```typescript
-export interface TodoUpdate {
-  id: string                   // Todo ID to update
-  updates: Partial<Todo>       // Fields to modify
-}
+// Current (5 fields)
+isFocusMode: boolean
+focusTimeRemaining: number
+focusTimerRunning: boolean
+distractionNotes: string
+previousTheme: string | null
+
+// Could become (1 field)
+focusSession: {
+  active: boolean
+  timeRemaining: number
+  running: boolean
+  notes: string
+  savedTheme: string | null
+} | null
 ```
 
-### ProcessResult Interface (`lib/types.ts:17-20`)
+### Type System Guidelines
 
-```typescript
-export interface ProcessResult {
-  newTodos: Todo[]            // Newly created todos
-  updates: TodoUpdate[]       // Updates to existing todos
-}
+1. **Use `Item` for storage/state** - Single source of truth
+2. **Use `Todo`/`Title` for component props** - Cleaner interfaces
+3. **Use type guards** - `isTodo()`, `isTitle()`, `isSeparator()`
+4. **Import `GroupBy` from `lib/grouping.ts`** - Not from `types.ts`
+
+### File Organization
+
 ```
-
----
-
-## Configuration
-
-### Next.js Config (`next.config.mjs`)
-
-```javascript
-const nextConfig = {
-  eslint: {
-    ignoreDuringBuilds: true,    // Skip ESLint during build
-  },
-  typescript: {
-    ignoreBuildErrors: true,      // Skip TypeScript errors during build
-  },
-  images: {
-    unoptimized: true,            // Disable image optimization
-  },
-}
+lib/
+├── store.ts          # Zustand store (state + actions)
+├── types.ts          # Core type definitions
+├── grouping.ts       # Grouping logic + GroupBy type
+├── format.ts         # Date formatting utilities
+├── utils.ts          # General utilities (cn)
+└── electron/         # Electron-specific code
+    └── database.ts   # DB abstraction
 ```
-
-**Note**: Build error ignoring is enabled for faster development iteration. For production, consider enabling these checks.
-
-### TypeScript Config (`tsconfig.json`)
-
-- **Target**: ES6
-- **Module**: ESNext with bundler resolution
-- **Strict Mode**: Enabled
-- **Path Alias**: `@/*` maps to project root
-- **JSX**: Preserve (handled by Next.js)
-- **Incremental**: Enabled for faster builds
-
-### Component Configuration (`components.json`)
-
-Defines shadcn/ui component settings:
-- Style: Default
-- Base color: Slate
-- CSS variables: Enabled
-- Tailwind config: Using v4 with @import
-- Component aliases: `@/components`
-- Utils alias: `@/lib/utils`
-
----
-
-## Development Guide
-
-### Prerequisites
-
-- Node.js 18+ or 20+
-- pnpm package manager
-- OpenAI API key
-
-### Installation
-
-```bash
-# Clone the repository
-git clone <repository-url>
-cd intelligent-todo-app
-
-# Install dependencies
-pnpm install
-
-# Set up environment variables
-echo "OPENAI_API_KEY=your_api_key_here" > .env.local
-```
-
-### Available Scripts
-
-```bash
-# Start development server (http://localhost:3000)
-pnpm dev
-
-# Build for production
-pnpm build
-
-# Start production server
-pnpm start
-
-# Run linter
-pnpm lint
-```
-
-### Project Conventions
-
-#### File Naming
-- React components: PascalCase (e.g., `TodoApp.tsx`)
-- Utilities and types: kebab-case (e.g., `process-todos.ts`)
-- UI components: kebab-case (e.g., `button.tsx`)
-
-#### Import Aliases
-- Use `@/` prefix for absolute imports
-- Example: `import { Todo } from "@/lib/types"`
-
-#### Component Patterns
-- Use `"use client"` directive for client components
-- Use `"use server"` directive for server actions
-- Export default for pages, named exports for components
-
-#### Styling
-- Tailwind utility classes for styling
-- Use `cn()` helper for conditional classes
-- Component variants via `class-variance-authority`
-
-### Adding New Features
-
-#### Adding a New Todo Field
-
-1. Update type definition in `lib/types.ts`:
-```typescript
-export interface Todo {
-  // ... existing fields
-  newField?: string  // Add your field
-}
-```
-
-2. Update Zod schema in `lib/process-todos.ts`:
-```typescript
-const TodoSchema = z.object({
-  // ... existing fields
-  newField: z.string().optional().describe("Description for AI"),
-})
-```
-
-3. Update AI prompt with extraction rules
-
-4. Update UI components to display the new field
-
-#### Adding a New UI Component
-
-```bash
-# Using shadcn/ui CLI
-npx shadcn@latest add <component-name>
-
-# Example:
-npx shadcn@latest add dialog
-```
-
-This will:
-- Add the component to `components/ui/`
-- Install required Radix UI dependencies
-- Configure proper TypeScript types
-
-### Debugging
-
-#### AI Processing Issues
-
-1. Check server console for AI API errors
-2. Verify `OPENAI_API_KEY` is set correctly
-3. Inspect prompt and schema in `lib/process-todos.ts`
-4. Test with simpler inputs first
-
-#### Voice Recognition Issues
-
-1. Verify browser support (Chrome/Edge preferred)
-2. Check microphone permissions
-3. Look for console errors in browser DevTools
-4. Test with `isSupported` state flag
-
-#### State Management Issues
-
-1. Use React DevTools to inspect component state
-2. Add console.logs in handlers
-3. Verify props are passed correctly
-4. Check for key prop warnings in lists
-
----
-
-## Security Considerations
-
-### API Key Protection
-- Never commit `.env` files
-- Use `.env.local` for local development
-- Set environment variables in Vercel dashboard for production
-
-### Input Validation
-- Zod schemas validate AI responses
-- TypeScript provides compile-time type safety
-- Server actions prevent direct API access from client
-
-### XSS Prevention
-- React automatically escapes JSX content
-- No `dangerouslySetInnerHTML` usage
-- User input sanitized through AI processing
-
----
-
-## Performance Optimization
-
-### Current Optimizations
-- Next.js automatic code splitting
-- Server-side AI processing (reduces client bundle)
-- Unoptimized images (config setting)
-- Incremental TypeScript compilation
-
-### Potential Improvements
-- Implement React.memo for TodoItem
-- Add virtual scrolling for large todo lists
-- Cache AI responses for similar inputs
-- Optimize bundle size (remove unused Radix components)
-- Add loading states for better perceived performance
-
----
-
-## Deployment
-
-### Vercel (Recommended)
-
-The project is configured for Vercel deployment:
-
-1. Connect GitHub repository to Vercel
-2. Set `OPENAI_API_KEY` environment variable
-3. Deploy automatically on push to main branch
-
-**Live URL**: https://vercel.com/dvdqrngs-projects/v0-intelligent-todo-app
-
-### Manual Deployment
-
-```bash
-# Build the project
-pnpm build
-
-# Start production server
-pnpm start
-```
-
-Ensure environment variables are set in your hosting platform.
-
----
-
-## Browser Compatibility
-
-### Supported Browsers
-- Chrome 90+
-- Edge 90+
-- Safari 15+
-- Firefox 88+
-
-### Voice Recognition Support
-- Chrome/Edge: Full support via Web Speech API
-- Safari: Partial support (WebKit Speech API)
-- Firefox: Limited/no support
-
-### Progressive Enhancement
-- Voice input gracefully degrades to text-only
-- Core functionality works without speech recognition
-
----
-
-## Known Limitations
-
-1. **No Data Persistence**: Todos are stored in React state and lost on page refresh. Consider adding localStorage or database integration.
-
-2. **No User Authentication**: Single-user experience. Multi-user support would require auth and database.
-
-3. **AI Rate Limits**: OpenAI API has rate limits. Consider implementing request queuing or caching.
-
-4. **Build Warnings Ignored**: TypeScript and ESLint errors are ignored during builds (see `next.config.mjs`).
-
-5. **No Offline Support**: Requires internet connection for AI processing.
-
-6. **Limited Error Recovery**: Failed AI requests show generic error messages.
-
----
-
-## Future Enhancements
-
-### Potential Features
-- [ ] Local storage persistence
-- [ ] User authentication (NextAuth.js)
-- [ ] Database integration (PostgreSQL, MongoDB)
-- [ ] Task sharing and collaboration
-- [ ] Recurring tasks
-- [ ] Task dependencies
-- [ ] Analytics and insights
-- [ ] Export/import functionality
-- [ ] Mobile app (React Native)
-- [ ] Calendar integration
-- [ ] Email reminders
-- [ ] Search and filtering
-- [ ] Bulk operations
-- [ ] Undo/redo functionality
-- [ ] Dark/light theme toggle UI
-
-### Technical Improvements
-- [ ] Add unit tests (Jest, React Testing Library)
-- [ ] Add E2E tests (Playwright, Cypress)
-- [ ] Implement proper error boundaries
-- [ ] Add request caching
-- [ ] Optimize bundle size
-- [ ] Add performance monitoring
-- [ ] Enable build error checking
-- [ ] Add CI/CD pipeline
-- [ ] Implement rate limiting
-- [ ] Add request retries with exponential backoff
-
----
-
-## License
-
-This project was created with [v0.app](https://v0.app) and is deployed on Vercel.
-
----
-
-## Support and Contact
-
-For issues and questions:
-- GitHub Repository: See project README
-- v0.app Project: https://v0.app/chat/projects/CTrA6HhwTJ9
-- Vercel Deployment: https://vercel.com/dvdqrngs-projects/v0-intelligent-todo-app
-
----
-
-**Documentation Version**: 1.0.0
-**Last Updated**: 2025-11-18
-**Generated By**: Claude Code Review

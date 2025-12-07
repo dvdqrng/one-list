@@ -1,245 +1,169 @@
 "use client"
 
-import { useState, useEffect, useRef, useCallback } from "react"
+import React, { useEffect, useCallback } from "react"
 import { TodoInput } from "./todo-input"
 import { TodoTextEditor } from "./todo-text-editor"
+import { TodoKanbanView } from "./todo-kanban-view"
 import { MergeButton } from "./merge-button"
-import { MergeDialog } from "./merge-dialog"
+import { ChangelogDialog } from "./changelog-dialog"
 import { TodoSidebar } from "./todo-sidebar"
+import { FocusModeOverlay } from "./focus-mode-overlay"
 import { Button } from "./ui/button"
-import { ScrollArea } from "./ui/scroll-area"
-import { Separator as ShadcnSeparator } from "./ui/separator"
-import { StarIcon, LightningIcon, MoonIcon, SunIcon } from "@phosphor-icons/react"
+import { Separator } from "./ui/separator"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "./ui/dropdown-menu"
+import {
+  SidebarInset,
+  SidebarProvider,
+  useSidebar,
+} from "./ui/sidebar"
+import { StarIcon, LightningIcon, MoonIcon, SunIcon, SidebarSimpleIcon, EyeIcon, EyeSlashIcon, CalendarBlankIcon, ListBulletsIcon, KanbanIcon, CaretDownIcon } from "@phosphor-icons/react"
 import { useTheme } from "next-themes"
-import { aiQueueManager } from "@/lib/ai-queue-manager"
-import { electronDB } from "@/lib/electron/database"
-import type { Todo, Title, Separator, BlockItem } from "@/lib/types"
+import { aiQueueManager } from "@/lib/ai"
+import { useStore, useTodos, useSelectedTodo, useSelectedTitle } from "@/lib/store"
+import { useFocusTimer } from "@/hooks/use-focus-timer"
+import { getDateForCategory, type DueDateCategory } from "@/lib/format"
+import type { Todo, ProposedChange } from "@/lib/types"
 import type { SimilarTaskGroup } from "@/lib/find-similar-tasks"
 
+function CustomSidebarTrigger() {
+  const { toggleSidebar, open } = useSidebar()
+
+  return (
+    <Button
+      variant="ghost"
+      size="icon"
+      className="h-7 w-7 text-muted-foreground"
+      onClick={toggleSidebar}
+      title={open ? "Collapse sidebar" : "Expand sidebar"}
+    >
+      <SidebarSimpleIcon className="h-4 w-4" weight={open ? "fill" : "regular"} />
+    </Button>
+  )
+}
+
 export function TodoApp() {
-  const [todos, setTodos] = useState<Todo[]>([])
-  const [titles, setTitles] = useState<Title[]>([])
-  const [separators, setSeparators] = useState<Separator[]>([])
-  const [isProcessing, setIsProcessing] = useState(false)
-  const [selectedTodoId, setSelectedTodoId] = useState<string | null>(null)
-  const [mergeGroups, setMergeGroups] = useState<SimilarTaskGroup[]>([])
-  const [showMergeDialog, setShowMergeDialog] = useState(false)
-  const [showMetadata, setShowMetadata] = useState(false)
-  const [showAiInput, setShowAiInput] = useState(false)
-  const [isLoading, setIsLoading] = useState(true)
+  // Zustand store state and actions
+  const {
+    items,
+    isLoading,
+    showMetadata,
+    showCompleted,
+    listGroupBy,
+    viewMode,
+    kanbanGroupBy,
+    changelogSession,
+    showChangelog,
+    loadItems,
+    updateItem,
+    updateItemDebounced,
+    toggleItem,
+    selectTodo,
+    setShowMetadata,
+    setShowCompleted,
+    setListGroupBy,
+    setViewMode,
+    setKanbanGroupBy,
+    setChangelogSession,
+    setShowChangelog,
+    applyChanges,
+    insertItemAfter,
+    moveToProject,
+  } = useStore()
+
+  // Derived state from store
+  const todos = useTodos()
+  const selectedTodo = useSelectedTodo()
+  const selectedTitle = useSelectedTitle()
+
+  // Local UI state
+  const [isProcessing, setIsProcessing] = React.useState(false)
+  const [showAiInput, setShowAiInput] = React.useState(false)
+  const [isApplyingChanges, setIsApplyingChanges] = React.useState(false)
   const { theme, setTheme } = useTheme()
 
-  // Refs for debouncing database writes
-  const todoUpdateTimers = useRef<Record<string, NodeJS.Timeout>>({})
-  const titleUpdateTimers = useRef<Record<string, NodeJS.Timeout>>({})
+  // Focus timer hook
+  const { startTimer } = useFocusTimer()
 
-  // Load initial data from Electron database
+  // Handler for starting focus mode from the Now group
+  const handleStartFocus = useCallback(() => {
+    startTimer(1500) // 25 minutes
+  }, [startTimer])
+
+  // Load initial data
   useEffect(() => {
-    loadData()
-  }, [])
+    loadItems()
+  }, [loadItems])
 
-  const loadData = async () => {
-    try {
-      setIsLoading(true)
-      const [todosData, titlesData, separatorsData] = await Promise.all([
-        electronDB.getTodos(),
-        electronDB.getTitles(),
-        electronDB.getSeparators(),
-      ])
-      setTodos(todosData)
-      setTitles(titlesData)
-      setSeparators(separatorsData)
-    } catch (error) {
-      console.error('Failed to load data:', error)
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  const handleAddTodo = useCallback(async (todo: Todo) => {
-    setTodos((prev) => [...prev, todo])
-    try {
-      await electronDB.createTodo(todo)
-    } catch (error) {
-      console.error('Failed to add todo:', error)
-      setTodos((prev) => prev.filter((t) => t.id !== todo.id))
-    }
-  }, [])
-
-  const handleAddTodos = useCallback(async (newTodos: Todo[]) => {
-    setTodos((prev) => [...prev, ...newTodos])
-    try {
-      await electronDB.createTodos(newTodos)
-    } catch (error) {
-      console.error('Failed to add todos:', error)
-      const newIds = new Set(newTodos.map((t) => t.id))
-      setTodos((prev) => prev.filter((t) => !newIds.has(t.id)))
-    }
-  }, [])
-
-  const handleAddTitle = useCallback(async (title: Title) => {
-    setTitles((prev) => [...prev, title])
-    try {
-      await electronDB.createTitle(title.text)
-    } catch (error) {
-      console.error('Failed to add title:', error)
-      setTitles((prev) => prev.filter((t) => t.id !== title.id))
-    }
-  }, [])
-
-  const handleUpdateTodo = useCallback((id: string, updates: Partial<Todo>) => {
-    // Optimistic update immediately
-    setTodos((prev) => prev.map((todo) => (todo.id === id ? { ...todo, ...updates } : todo)))
-
-    // Debounce the database write
-    if (todoUpdateTimers.current[id]) {
-      clearTimeout(todoUpdateTimers.current[id])
-    }
-    todoUpdateTimers.current[id] = setTimeout(async () => {
-      try {
-        await electronDB.updateTodo(id, updates)
-      } catch (error) {
-        console.error('Failed to update todo:', error)
-        loadData()
-      }
-      delete todoUpdateTimers.current[id]
-    }, 300)
-  }, [])
-
-  // Set up queue manager callback (after handleUpdateTodo is defined)
+  // Set up AI queue manager callback
   useEffect(() => {
     aiQueueManager.setUpdateCallback((todoId, updates) => {
-      handleUpdateTodo(todoId, updates)
+      updateItemDebounced(todoId, updates)
     })
-  }, [handleUpdateTodo])
+  }, [updateItemDebounced])
+
+  // Handlers that wrap store actions with additional logic
+
+  const handleUpdateTodo = useCallback((id: string, updates: Partial<Todo>) => {
+    // Convert Todo updates to Item updates and debounce
+    updateItemDebounced(id, updates)
+  }, [updateItemDebounced])
 
   const handleUpdateTitle = useCallback((id: string, text: string) => {
-    // Optimistic update immediately
-    setTitles((prev) => prev.map((title) => (title.id === id ? { ...title, text } : title)))
+    updateItemDebounced(id, { text })
+  }, [updateItemDebounced])
 
-    // Debounce the database write
-    if (titleUpdateTimers.current[id]) {
-      clearTimeout(titleUpdateTimers.current[id])
+  const handleRenameCategory = useCallback(async (oldName: string, newName: string) => {
+    // Update all todos with this category
+    const todosToUpdate = items.filter(i => i.type === "todo" && i.category === oldName)
+    for (const item of todosToUpdate) {
+      updateItem(item.id, { category: newName })
     }
-    titleUpdateTimers.current[id] = setTimeout(async () => {
-      try {
-        await electronDB.updateTitle(id, text)
-      } catch (error) {
-        console.error('Failed to update title:', error)
-        loadData()
-      }
-      delete titleUpdateTimers.current[id]
-    }, 300)
-  }, [])
+  }, [items, updateItem])
 
-  const handleDeleteTodo = useCallback(async (id: string) => {
-    setTodos((prev) => prev.filter((todo) => todo.id !== id))
-    setSelectedTodoId((prev) => (prev === id ? null : prev))
-    try {
-      await electronDB.deleteTodo(id)
-    } catch (error) {
-      console.error('Failed to delete todo:', error)
-      loadData()
+  const handleDeleteCategory = useCallback(async (categoryName: string) => {
+    // Remove category from all todos that have it
+    const todosToUpdate = items.filter(i => i.type === "todo" && i.category === categoryName)
+    for (const item of todosToUpdate) {
+      updateItem(item.id, { category: undefined })
     }
-  }, [])
+  }, [items, updateItem])
 
-  const handleDeleteTitle = useCallback(async (id: string) => {
-    setTitles((prev) => prev.filter((title) => title.id !== id))
-    try {
-      await electronDB.deleteTitle(id)
-    } catch (error) {
-      console.error('Failed to delete title:', error)
-      loadData()
-    }
-  }, [])
-
-  const handleAddSeparator = useCallback(async (separator: Separator) => {
-    setSeparators((prev) => [...prev, separator])
-    try {
-      await electronDB.createSeparator()
-    } catch (error) {
-      console.error('Failed to add separator:', error)
-      setSeparators((prev) => prev.filter((s) => s.id !== separator.id))
-    }
-  }, [])
-
-  const handleDeleteSeparator = useCallback(async (id: string) => {
-    setSeparators((prev) => prev.filter((sep) => sep.id !== id))
-    try {
-      await electronDB.deleteSeparator(id)
-    } catch (error) {
-      console.error('Failed to delete separator:', error)
-      loadData()
-    }
-  }, [])
-
-  const handleToggleTodo = useCallback(async (id: string) => {
-    setTodos((prev) => prev.map((todo) => (todo.id === id ? { ...todo, completed: !todo.completed } : todo)))
-    try {
-      await electronDB.toggleTodo(id)
-    } catch (error) {
-      console.error('Failed to toggle todo:', error)
-      loadData()
-    }
-  }, [])
+  // Use store actions directly for simple operations
+  const handleToggleTodo = toggleItem
 
   const handleSelectTodo = useCallback((id: string) => {
-    setSelectedTodoId((prev) => (prev === id ? null : id))
-  }, [])
+    selectTodo(id)
+  }, [selectTodo])
 
-  const handleReorderItems = useCallback(async (reorderedItems: BlockItem[]) => {
-    const now = Date.now()
-    const updatedTodos: Todo[] = []
-    const updatedTitles: Title[] = []
-    const updatedSeparators: Separator[] = []
+  // Handler for when AI input or merge button proposes changes
+  const handleChangesProposed = useCallback((
+    changes: ProposedChange[],
+    inputText: string,
+    source: "ai-input" | "merge-button" = "ai-input"
+  ) => {
+    setChangelogSession({
+      id: crypto.randomUUID(),
+      source,
+      inputText: source === "ai-input" ? inputText : undefined,
+      changes,
+      createdAt: new Date().toISOString(),
+    })
+    setShowChangelog(true)
+  }, [setChangelogSession, setShowChangelog])
 
-    for (let i = 0; i < reorderedItems.length; i++) {
-      const item = reorderedItems[i]
-      const newCreatedAt = new Date(now + i).toISOString()
-
-      if ('completed' in item) {
-        updatedTodos.push({ ...item, createdAt: newCreatedAt })
-      } else if ('text' in item) {
-        updatedTitles.push({ ...item, createdAt: newCreatedAt })
-      } else {
-        updatedSeparators.push({ ...item, createdAt: newCreatedAt })
-      }
-    }
-
-    // Apply optimistic updates immediately
-    setTodos(updatedTodos)
-    setTitles(updatedTitles)
-    setSeparators(updatedSeparators)
-
-    // Persist to database
-    try {
-      await Promise.all(
-        reorderedItems.map((item, i) => {
-          const newCreatedAt = new Date(now + i).toISOString()
-
-          if ('completed' in item) {
-            return electronDB.updateTodo(item.id, { createdAt: newCreatedAt })
-          } else if ('text' in item) {
-            return electronDB.updateTitleCreatedAt(item.id, newCreatedAt)
-          } else {
-            return electronDB.updateSeparatorCreatedAt(item.id, newCreatedAt)
-          }
-        })
-      )
-    } catch (error) {
-      console.error('Failed to persist reorder:', error)
-      loadData()
-    }
-  }, [])
-
+  // Handler for merge button results - converts to ProposedChange format
   const handleMergeGroupsFound = useCallback((groups: SimilarTaskGroup[]) => {
-    setMergeGroups(groups)
-    setShowMergeDialog(true)
-  }, [])
+    const changes: ProposedChange[] = groups.map((group) => {
+      const sourceTodos = group.taskIds
+        .map((id) => todos.find((t) => t.id === id))
+        .filter((t): t is Todo => t !== undefined)
 
-  const handleMerge = useCallback(async (groupsToMerge: SimilarTaskGroup[]) => {
-    for (const group of groupsToMerge) {
-      const mergedTodo: Todo = {
+      const mergedResult: Todo = {
         id: crypto.randomUUID(),
         title: group.suggestedMerge.title,
         details: group.suggestedMerge.details,
@@ -250,23 +174,71 @@ export function TodoApp() {
         createdAt: new Date().toISOString(),
       }
 
-      try {
-        await Promise.all(
-          group.taskIds.map(id => electronDB.deleteTodo(id))
-        )
-        await electronDB.createTodo(mergedTodo)
-        setTodos((prev) => [
-          ...prev.filter((todo) => !group.taskIds.includes(todo.id)),
-          mergedTodo
-        ])
-      } catch (error) {
-        console.error('Failed to merge todos:', error)
-        loadData()
+      return {
+        id: crypto.randomUUID(),
+        type: "merge" as const,
+        mergeGroup: {
+          sourceTodos,
+          mergedResult,
+          similarityReason: group.similarityReason,
+          confidenceScore: group.confidenceScore,
+        },
+      }
+    })
+
+    handleChangesProposed(changes, "", "merge-button")
+  }, [todos, handleChangesProposed])
+
+  // Handler for applying approved changes from the changelog dialog
+  const handleApplyChanges = useCallback(async (approvedChanges: ProposedChange[]) => {
+    setIsApplyingChanges(true)
+    try {
+      await applyChanges(approvedChanges)
+    } catch (error) {
+      console.error('Failed to apply changes:', error)
+    } finally {
+      setIsApplyingChanges(false)
+    }
+  }, [applyChanges])
+
+  const handleMoveToProject = useCallback(async (todoId: string, projectId: string | null) => {
+    await moveToProject(todoId, projectId)
+  }, [moveToProject])
+
+  // Handler for adding a new todo from kanban view
+  const handleAddTodoFromKanban = useCallback((columnId: string) => {
+    // Determine what field to set based on the kanban groupBy
+    const getInitialDataForColumn = (): Partial<Todo> => {
+      switch (kanbanGroupBy) {
+        case "dueDate":
+          if (columnId === "now") {
+            return { isNow: true }
+          }
+          // Use centralized date helper for all due date categories
+          const dueDate = getDateForCategory(columnId as DueDateCategory)
+          return dueDate ? { dueDate } : {}
+        case "priority":
+          if (columnId === "none") return {}
+          return { priority: columnId as Todo["priority"] }
+        case "status":
+          if (columnId === "done") return { completed: true }
+          return { status: columnId as Todo["status"] }
+        case "category":
+          if (columnId === "uncategorized") return {}
+          return { category: columnId }
+        case "project":
+          if (columnId === "no-project") return {}
+          return { project: columnId }
+        default:
+          return {}
       }
     }
-  }, [])
 
-  const selectedTodo = todos.find((t) => t.id === selectedTodoId)
+    // Create the todo with initial data already set - this ensures it appears in the correct column immediately
+    const initialData = getInitialDataForColumn()
+    insertItemAfter(null, 'todo', initialData)
+    // Note: The kanban view will auto-detect the new empty-title todo and start inline editing
+  }, [insertItemAfter, kanbanGroupBy])
 
   if (isLoading) {
     return (
@@ -277,99 +249,176 @@ export function TodoApp() {
   }
 
   return (
-    <>
-      <div className="flex h-screen bg-background">
-        {/* Main Content Area */}
-        <div className="flex-1 flex flex-col min-w-0">
-          {/* Header */}
-          <header className="shrink-0 h-14 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-            <div className="mx-auto max-w-4xl px-4 md:px-8 h-full flex items-center">
-              <div className="flex items-center gap-2 w-full">
-                <h1 className="text-sm font-medium">Notes List</h1>
-                <div className="flex-1" />
-                <Button
-                  variant={showAiInput ? "default" : "outline"}
-                  size="icon"
-                  className="h-7 w-7"
-                  onClick={() => setShowAiInput(!showAiInput)}
-                  title={showAiInput ? "Hide AI Input" : "Show AI Input"}
-                >
-                  <LightningIcon size={14} weight="fill" />
-                </Button>
-                <Button
-                  variant={showMetadata ? "default" : "outline"}
-                  size="icon"
-                  className="h-7 w-7"
-                  onClick={() => setShowMetadata(!showMetadata)}
-                  title={showMetadata ? "Hide metadata" : "Show metadata"}
-                >
-                  <StarIcon size={14} weight="fill" />
-                </Button>
-                <Button
-                  variant="outline"
-                  size="icon"
-                  className="h-7 w-7"
-                  onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-                  title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
-                >
-                  {theme === "dark" ? (
-                    <SunIcon size={14} weight="fill" />
-                  ) : (
-                    <MoonIcon size={14} weight="fill" />
-                  )}
-                </Button>
-                <ShadcnSeparator orientation="vertical" className="h-5" />
-                <MergeButton todos={todos} onMergeGroupsFound={handleMergeGroupsFound} />
+    <SidebarProvider defaultOpen={false}>
+      <SidebarInset className="bg-background">
+        {/* Title bar - 44px height, traffic lights (12px) centered at y=16 */}
+        <header
+          className="sticky top-0 z-10 flex h-11 shrink-0 items-center gap-2 pl-[76px] pr-4 bg-background"
+          style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
+        >
+          <div className="flex-1" />
+          <div className="flex items-center gap-1" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+            {/* View Mode Toggle */}
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 text-muted-foreground"
+              onClick={() => setViewMode(viewMode === "list" ? "kanban" : "list")}
+              title={viewMode === "list" ? "Switch to Kanban view" : "Switch to List view"}
+            >
+              {viewMode === "list" ? (
+                <KanbanIcon className="h-4 w-4" weight="regular" />
+              ) : (
+                <ListBulletsIcon className="h-4 w-4" weight="regular" />
+              )}
+            </Button>
+            {/* Kanban Group By Dropdown - only show in kanban mode */}
+            {viewMode === "kanban" && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 gap-1 px-2 text-muted-foreground"
+                  >
+                    <span className="text-xs capitalize">{kanbanGroupBy === "dueDate" ? "Due Date" : kanbanGroupBy}</span>
+                    <CaretDownIcon className="h-3 w-3" weight="bold" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start">
+                  <DropdownMenuItem onClick={() => setKanbanGroupBy("dueDate")}>
+                    Due Date
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setKanbanGroupBy("priority")}>
+                    Priority
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setKanbanGroupBy("status")}>
+                    Status
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setKanbanGroupBy("category")}>
+                    Category
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setKanbanGroupBy("project")}>
+                    Project
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
+            <Separator orientation="vertical" className="mx-1 data-[orientation=vertical]:h-4" />
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 text-muted-foreground"
+              onClick={() => setShowCompleted(!showCompleted)}
+              title={showCompleted ? "Hide completed tasks" : "Show completed tasks"}
+            >
+              {showCompleted ? (
+                <EyeIcon className="h-4 w-4" weight="regular" />
+              ) : (
+                <EyeSlashIcon className="h-4 w-4" weight="regular" />
+              )}
+            </Button>
+            {viewMode === "list" && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7 text-muted-foreground"
+                onClick={() => setListGroupBy(listGroupBy === "dueDate" ? "position" : "dueDate")}
+                title={listGroupBy === "dueDate" ? "Group by project" : "Group by due date"}
+              >
+                <CalendarBlankIcon className="h-4 w-4" weight={listGroupBy === "dueDate" ? "fill" : "regular"} />
+              </Button>
+            )}
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 text-muted-foreground"
+              onClick={() => setShowAiInput(!showAiInput)}
+              title={showAiInput ? "Hide AI Input" : "Show AI Input"}
+            >
+              <LightningIcon className="h-4 w-4" weight={showAiInput ? "fill" : "regular"} />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 text-muted-foreground"
+              onClick={() => setShowMetadata(!showMetadata)}
+              title={showMetadata ? "Hide metadata" : "Show metadata"}
+            >
+              <StarIcon className="h-4 w-4" weight={showMetadata ? "fill" : "regular"} />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 text-muted-foreground"
+              onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+              title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+            >
+              {theme === "dark" ? (
+                <SunIcon className="h-4 w-4" weight="regular" />
+              ) : (
+                <MoonIcon className="h-4 w-4" weight="regular" />
+              )}
+            </Button>
+            <Separator orientation="vertical" className="mx-2 data-[orientation=vertical]:h-4" />
+            <MergeButton todos={todos} onMergeGroupsFound={handleMergeGroupsFound} />
+            <Separator orientation="vertical" className="mx-2 data-[orientation=vertical]:h-4" />
+            <CustomSidebarTrigger />
+          </div>
+        </header>
+        <div className="flex flex-1 flex-col">
+          <main className={viewMode === "list" ? "flex-1 overflow-auto" : "flex-1 overflow-hidden"}>
+            {viewMode === "list" ? (
+              <div className="mx-auto max-w-4xl px-4 md:px-8 pb-6">
+                <TodoTextEditor onStartFocus={handleStartFocus} />
               </div>
-            </div>
-          </header>
-
-          {/* Scrollable Content */}
-          <ScrollArea className="flex-1">
-            <main className="mx-auto max-w-4xl px-4 md:px-8 py-6">
-              <TodoTextEditor
-                todos={todos}
-                titles={titles}
-                separators={separators}
-                onAddTodo={handleAddTodo}
-                onAddTitle={handleAddTitle}
-                onAddSeparator={handleAddSeparator}
-                onUpdateTodo={handleUpdateTodo}
-                onUpdateTitle={handleUpdateTitle}
-                onDeleteTodo={handleDeleteTodo}
-                onDeleteTitle={handleDeleteTitle}
-                onDeleteSeparator={handleDeleteSeparator}
-                onToggleTodo={handleToggleTodo}
-                onSelectTodo={handleSelectTodo}
-                onReorderItems={handleReorderItems}
-                showMetadata={showMetadata}
-              />
-            </main>
-          </ScrollArea>
-
-          {/* AI Input */}
+            ) : (
+              <div className="h-full">
+                <TodoKanbanView
+                  items={items}
+                  groupBy={kanbanGroupBy}
+                  showCompleted={showCompleted}
+                  showMetadata={showMetadata}
+                  onUpdateTodo={handleUpdateTodo}
+                  onToggleTodo={handleToggleTodo}
+                  onSelectTodo={handleSelectTodo}
+                  onAddTodo={handleAddTodoFromKanban}
+                />
+              </div>
+            )}
+          </main>
           <TodoInput
             existingTodos={todos}
-            onAddTodos={handleAddTodos}
-            onUpdateTodo={handleUpdateTodo}
+            onChangesProposed={(changes, inputText) => handleChangesProposed(changes, inputText, "ai-input")}
             isProcessing={isProcessing}
             setIsProcessing={setIsProcessing}
             isVisible={showAiInput}
             onToggleVisibility={() => setShowAiInput(!showAiInput)}
           />
         </div>
-
-        {/* Sidebar */}
-        <TodoSidebar selectedTodo={selectedTodo} allTodos={todos} onUpdateTodo={handleUpdateTodo} />
-      </div>
-
-      <MergeDialog
-        open={showMergeDialog}
-        onOpenChange={setShowMergeDialog}
-        groups={mergeGroups}
-        todos={todos}
-        onMerge={handleMerge}
+      </SidebarInset>
+      <TodoSidebar
+        selectedTodo={selectedTodo}
+        selectedTitle={selectedTitle}
+        allTodos={todos}
+        allItems={items}
+        onUpdateTodo={handleUpdateTodo}
+        onUpdateTitle={handleUpdateTitle}
+        onRenameCategory={handleRenameCategory}
+        onDeleteCategory={handleDeleteCategory}
+        onMoveToProject={handleMoveToProject}
       />
-    </>
+
+      <ChangelogDialog
+        open={showChangelog}
+        onOpenChange={setShowChangelog}
+        session={changelogSession}
+        onApplyChanges={handleApplyChanges}
+        isApplying={isApplyingChanges}
+      />
+
+      {/* Focus Mode Overlay - renders on top of everything when active */}
+      <FocusModeOverlay />
+    </SidebarProvider>
   )
 }
