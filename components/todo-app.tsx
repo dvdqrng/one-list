@@ -21,7 +21,7 @@ import {
   SidebarProvider,
   useSidebar,
 } from "./ui/sidebar"
-import { StarIcon, LightningIcon, MoonIcon, SunIcon, SidebarSimpleIcon, EyeIcon, EyeSlashIcon, CalendarBlankIcon, ListBulletsIcon, KanbanIcon, CaretDownIcon } from "@phosphor-icons/react"
+import { TagIcon, LightningIcon, MoonIcon, SunIcon, SidebarSimpleIcon, EyeIcon, EyeSlashIcon, CalendarBlankIcon, ListBulletsIcon, KanbanIcon, CaretDownIcon } from "@phosphor-icons/react"
 import { useTheme } from "next-themes"
 import { aiQueueManager } from "@/lib/ai"
 import { useStore, useTodos, useSelectedTodo, useSelectedTitle } from "@/lib/store"
@@ -250,10 +250,10 @@ export function TodoApp() {
 
   return (
     <SidebarProvider defaultOpen={false}>
-      <SidebarInset className="bg-background">
+      <SidebarInset>
         {/* Title bar - 44px height, traffic lights (12px) centered at y=16 */}
         <header
-          className="sticky top-0 z-10 flex h-11 shrink-0 items-center gap-2 pl-[76px] pr-4 bg-background"
+          className="sticky top-0 z-10 flex h-11 shrink-0 items-center gap-2 pl-[76px] pr-4"
           style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
         >
           <div className="flex-1" />
@@ -345,7 +345,7 @@ export function TodoApp() {
               onClick={() => setShowMetadata(!showMetadata)}
               title={showMetadata ? "Hide metadata" : "Show metadata"}
             >
-              <StarIcon className="h-4 w-4" weight={showMetadata ? "fill" : "regular"} />
+              <TagIcon className="h-4 w-4" weight={showMetadata ? "fill" : "regular"} />
             </Button>
             <Button
               variant="ghost"
