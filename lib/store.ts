@@ -13,7 +13,7 @@ import { persist } from "zustand/middleware"
 import { useMemo } from "react"
 import { itemsDB } from "@/lib/electron/database"
 import type { Item, Todo, Title, ChangelogSession, ProposedChange, ViewMode, KanbanGroupBy, ListGroupBy } from "@/lib/types"
-import { sortItemsByPosition, isTodo, isTitle, isSeparator, itemToTodo, itemToTitle } from "@/lib/types"
+import { sortItemsByPosition, isTodo, isTitle, itemToTodo, itemToTitle } from "@/lib/types"
 
 // ============================================
 // Store Types
@@ -90,8 +90,7 @@ interface AppActions {
 
   // Utility
   getNextPosition: () => number
-  insertItemAfter: (afterId: string | null, type: "todo" | "title" | "separator", initialData?: Partial<Item>) => string
-  moveToProject: (todoId: string, projectId: string | null) => Promise<void>
+  insertItemAfter: (afterId: string | null, type: "todo" | "title", initialData?: Partial<Item>) => string
 }
 
 // ============================================
@@ -402,13 +401,12 @@ export const useStore = create<AppState & AppActions>()(
         return Math.max(...items.map((i) => i.position)) + 1
       },
 
-      insertItemAfter: (afterId: string | null, type: "todo" | "title" | "separator", initialData?: Partial<Item>) => {
+      insertItemAfter: (afterId: string | null, type: "todo" | "title", initialData?: Partial<Item>) => {
         const { items, addItem } = get()
         const id = crypto.randomUUID()
         const now = new Date().toISOString()
 
         let position: number
-        let parentId: string | undefined
 
         if (afterId === null) {
           position = 0
@@ -422,9 +420,6 @@ export const useStore = create<AppState & AppActions>()(
           const afterItem = items.find((i) => i.id === afterId)
           if (afterItem) {
             position = afterItem.position + 1
-            if (isTodo(afterItem)) {
-              parentId = afterItem.parentId
-            }
             const updatedItems = items.map((item) =>
               item.position >= position ? { ...item, position: item.position + 1 } : item
             )
@@ -443,7 +438,6 @@ export const useStore = create<AppState & AppActions>()(
           id,
           type,
           position,
-          parentId,
           createdAt: now,
           ...(type === "todo" ? { completed: false, title: "" } : {}),
           ...(type === "title" ? { text: "" } : {}),
@@ -452,40 +446,6 @@ export const useStore = create<AppState & AppActions>()(
 
         addItem(newItem)
         return id
-      },
-
-      moveToProject: async (todoId: string, projectId: string | null) => {
-        const { items, updateItem, reorderItems } = get()
-        const todo = items.find((i) => i.id === todoId)
-        if (!todo || !isTodo(todo)) return
-
-        updateItem(todoId, { parentId: projectId || undefined })
-
-        if (projectId) {
-          const project = items.find((i) => i.id === projectId)
-          if (project) {
-            const sorted = sortItemsByPosition(items)
-            const projectIndex = sorted.findIndex((i) => i.id === projectId)
-
-            let insertIndex = projectIndex + 1
-            for (let i = projectIndex + 1; i < sorted.length; i++) {
-              const item = sorted[i]
-              if (isTitle(item) || isSeparator(item)) break
-              if (isTodo(item) && item.parentId === projectId) {
-                insertIndex = i + 1
-              }
-            }
-
-            const withoutTodo = sorted.filter((i) => i.id !== todoId)
-            withoutTodo.splice(
-              insertIndex > sorted.findIndex((i) => i.id === todoId) ? insertIndex - 1 : insertIndex,
-              0,
-              { ...todo, parentId: projectId }
-            )
-
-            await reorderItems(withoutTodo)
-          }
-        }
       },
     }),
     {

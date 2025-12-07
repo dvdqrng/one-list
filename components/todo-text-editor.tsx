@@ -297,6 +297,16 @@ export function TodoTextEditor({ onStartFocus }: TodoTextEditorProps) {
         const dueDate = getDateForCategory(options.category as DueDateCategory)
         if (dueDate) initialData.dueDate = dueDate
       }
+
+      // Set indent level based on context
+      if (isTodo(item)) {
+        // New tasks inherit the indent level of the current todo
+        initialData.indent = item.indent ?? 0
+      } else if (isTitle(item)) {
+        // Tasks created after a title should be indented (part of the project)
+        initialData.indent = 1
+      }
+
       const newId = insertItemAfter(item.id, 'todo', initialData)
       setFocusTarget(newId)
     },
@@ -335,7 +345,7 @@ export function TodoTextEditor({ onStartFocus }: TodoTextEditorProps) {
         dueDate: item.dueDate,
         category: item.category,
         aiProcessingStatus: item.aiProcessingStatus,
-        indent: item.indent,
+        // Don't pass indent to TaskItem - it's used for grouping logic, not visual
       }}
       onStatusChange={(id, status) => {
         const completed = status === "done"
@@ -511,27 +521,12 @@ export function TodoTextEditor({ onStartFocus }: TodoTextEditorProps) {
                 <div className="pb-2">
                   {group.items.slice(1).map((item) => (
                     <SortableItem key={item.id} id={item.id}>
-                      {renderTodo(item, { indentLevel: 1 })}
+                      {renderTodo(item, { indentLevel: item.indent ?? 1 })}
                     </SortableItem>
                   ))}
                 </div>
               )}
             </div>
-          )
-        }
-
-        // Separator group
-        if (group.key.startsWith('separator-')) {
-          const item = group.items[0]
-          return (
-            <SortableItem key={group.key} id={item.id}>
-              <div
-                className="h-4 flex items-center px-3 cursor-pointer hover:bg-muted/20"
-                onClick={() => deleteItem(item.id)}
-              >
-                <div className="w-full h-px bg-border/30" />
-              </div>
-            </SortableItem>
           )
         }
 

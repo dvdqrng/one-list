@@ -23,7 +23,7 @@ import {
 } from "@/components/ui/select"
 import { WarningCircleIcon, FolderIcon, PencilSimpleIcon } from "@phosphor-icons/react"
 import type { Todo, Title, TodoStatus, Item } from "@/lib/types"
-import { sortItemsByPosition, isTodo, isTitle, isSeparator } from "@/lib/types"
+import { sortItemsByPosition, isTodo, isTitle } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
 interface TodoSidebarProps {
@@ -34,11 +34,9 @@ interface TodoSidebarProps {
   onUpdateTodo?: (id: string, updates: Partial<Todo>) => void
   onUpdateTitle?: (id: string, text: string) => void
   onRenameCategory?: (oldName: string, newName: string) => void
-  onDeleteCategory?: (categoryName: string) => void
-  onMoveToProject?: (todoId: string, targetProjectId: string | null) => void
 }
 
-export function TodoSidebar({ selectedTodo, selectedTitle, allTodos, allItems, onUpdateTodo, onUpdateTitle, onRenameCategory, onMoveToProject }: TodoSidebarProps) {
+export function TodoSidebar({ selectedTodo, selectedTitle, allTodos, allItems, onUpdateTodo, onUpdateTitle, onRenameCategory }: TodoSidebarProps) {
   const [editingCategory, setEditingCategory] = useState<string | null>(null)
   const [editingCategoryValue, setEditingCategoryValue] = useState("")
   const titleInputRef = useRef<HTMLTextAreaElement>(null)
@@ -57,17 +55,19 @@ export function TodoSidebar({ selectedTodo, selectedTitle, allTodos, allItems, o
   // Sort items by position for group calculations
   const sortedItems = useMemo(() => sortItemsByPosition(allItems), [allItems])
 
-  // Helper to find parent title for a todo
+  // Helper to find parent title for a todo (based on indent)
   const findParentTitle = useMemo(() => {
     return (todoId: string): Title | undefined => {
       const todoIndex = sortedItems.findIndex(item => item.id === todoId)
       if (todoIndex === -1) return undefined
 
-      // Look backwards for a title, stopping at separators or empty todos
+      const todo = sortedItems[todoIndex]
+      // Standalone tasks (indent 0) have no parent
+      if ((todo.indent ?? 0) === 0) return undefined
+
+      // Look backwards for a title
       for (let i = todoIndex - 1; i >= 0; i--) {
         const item = sortedItems[i]
-        if (isSeparator(item)) return undefined
-        if (isTodo(item) && !item.title?.trim()) return undefined
         if (isTitle(item)) {
           return { id: item.id, text: item.text || '', createdAt: item.createdAt }
         }
@@ -82,13 +82,6 @@ export function TodoSidebar({ selectedTodo, selectedTitle, allTodos, allItems, o
     return findParentTitle(selectedTodo.id)
   }, [selectedTodo, findParentTitle])
 
-  // Get all available projects (titles)
-  const allProjects = useMemo(() => {
-    return sortedItems
-      .filter(item => isTitle(item))
-      .map(item => ({ id: item.id, text: item.text || '' }))
-  }, [sortedItems])
-
   // Extract unique categories from all todos
   const existingCategories = useMemo(() => {
     const categories = allTodos
@@ -97,25 +90,30 @@ export function TodoSidebar({ selectedTodo, selectedTitle, allTodos, allItems, o
     return [...new Set(categories)].sort()
   }, [allTodos])
 
-  // Get todos belonging to the selected title (project)
+  // Get todos belonging to the selected title (project) - based on indent
   const projectTodos = useMemo(() => {
     if (!selectedTitle) return []
-    // Find all todos that have this title as their parent
-    return sortedItems
-      .filter(item => isTodo(item))
-      .filter(item => {
-        const parent = findParentTitle(item.id)
-        return parent?.id === selectedTitle.id
-      })
-      .map(item => allTodos.find(t => t.id === item.id))
-      .filter((t): t is Todo => t !== undefined)
-  }, [selectedTitle, sortedItems, findParentTitle, allTodos])
+    const titleIndex = sortedItems.findIndex(item => item.id === selectedTitle.id)
+    if (titleIndex === -1) return []
+
+    const todos: Todo[] = []
+    // Collect all indented todos after this title until we hit another title
+    for (let i = titleIndex + 1; i < sortedItems.length; i++) {
+      const item = sortedItems[i]
+      if (isTitle(item)) break // Stop at next title
+      if (isTodo(item) && (item.indent ?? 0) > 0) {
+        const todo = allTodos.find(t => t.id === item.id)
+        if (todo) todos.push(todo)
+      }
+    }
+    return todos
+  }, [selectedTitle, sortedItems, allTodos])
 
   const completedCount = projectTodos.filter((t) => t.completed).length
   const totalCount = projectTodos.length
 
   return (
-    <Sidebar side="right" variant="sidebar" collapsible="offcanvas" className="bg-sidebar">
+    <Sidebar side="right" variant="sidebar" collapsible="offcanvas">
       <SidebarHeader
         className="h-11 p-0"
         style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
@@ -265,42 +263,17 @@ export function TodoSidebar({ selectedTodo, selectedTitle, allTodos, allItems, o
               </div>
             </div>
 
-            {/* Project */}
-            <div className="space-y-2">
-              <Label>Project</Label>
-              <Select
-                value={parentTitle?.id || "none"}
-                onValueChange={(value: string) => {
-                  onMoveToProject?.(selectedTodo.id, value === "none" ? null : value)
-                }}
-              >
-                <SelectTrigger className="w-full border-border">
-                  <SelectValue placeholder="Select project">
-                    <div className="flex items-center gap-2">
-                      {parentTitle ? (
-                        <>
-                          <FolderIcon className="h-4 w-4 text-muted-foreground shrink-0" weight="fill" />
-                          <span>{parentTitle.text}</span>
-                        </>
-                      ) : (
-                        <span className="text-muted-foreground">No project</span>
-                      )}
-                    </div>
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">No project</SelectItem>
-                  {allProjects.map((project) => (
-                    <SelectItem key={project.id} value={project.id}>
-                      <div className="flex items-center gap-2">
-                        <FolderIcon className="h-4 w-4 text-muted-foreground shrink-0" weight="fill" />
-                        <span>{project.text || "Untitled"}</span>
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+            {/* Project (read-only display) */}
+            {parentTitle && (
+              <div className="space-y-2">
+                <Label>Project</Label>
+                <div className="flex items-center gap-2 px-3 py-2 rounded-md bg-muted/50">
+                  <FolderIcon className="h-4 w-4 text-muted-foreground shrink-0" weight="fill" />
+                  <span className="text-sm">{parentTitle.text}</span>
+                </div>
+                <p className="text-xs text-muted-foreground">Use Tab/Shift+Tab in the editor to change project</p>
+              </div>
+            )}
 
             {/* Category */}
             <div className="space-y-2">

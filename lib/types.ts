@@ -17,7 +17,6 @@ export interface Item {
   id: string
   type: ItemType
   position: number
-  parentId?: string
 
   // Todo-specific fields
   title?: string
@@ -173,17 +172,18 @@ export function sortItemsByPosition(items: Item[]): Item[] {
 }
 
 /**
- * Derive project name for a todo based on position relative to titles
+ * Derive project name for a todo based on indent level
+ * Tasks with indent > 0 belong to the nearest title above them
  */
 export function deriveProjectForItem(item: Item, allItems: Item[]): string | undefined {
   if (item.type !== "todo") return undefined
+  if ((item.indent ?? 0) === 0) return undefined // Standalone task
 
   const sortedItems = sortItemsByPosition(allItems)
   const itemIndex = sortedItems.findIndex(i => i.id === item.id)
 
   for (let i = itemIndex - 1; i >= 0; i--) {
     const prevItem = sortedItems[i]
-    if (prevItem.type === "separator") return undefined
     if (prevItem.type === "title") return prevItem.text
   }
 
@@ -191,15 +191,17 @@ export function deriveProjectForItem(item: Item, allItems: Item[]): string | und
 }
 
 /**
- * Get the title (project) that a todo belongs to
+ * Get the title (project) that a todo belongs to based on indent
  */
 export function getProjectForTodo(todoId: string, items: Item[]): Item | undefined {
   const sortedItems = sortItemsByPosition(items)
   const itemIndex = sortedItems.findIndex(i => i.id === todoId)
+  const item = sortedItems[itemIndex]
+
+  if (!item || (item.indent ?? 0) === 0) return undefined // Standalone task
 
   for (let i = itemIndex - 1; i >= 0; i--) {
     const prevItem = sortedItems[i]
-    if (prevItem.type === "separator") return undefined
     if (prevItem.type === "title") return prevItem
   }
 

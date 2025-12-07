@@ -7,7 +7,7 @@
 
 import { useMemo } from "react"
 import type { Item } from "./types"
-import { isTodo, isTitle, isSeparator, sortItemsByPosition } from "./types"
+import { isTodo, isTitle, sortItemsByPosition } from "./types"
 import {
   getDueDateCategory,
   DUE_DATE_GROUP_ORDER,
@@ -92,9 +92,9 @@ function groupByPosition(items: Item[], options: GroupingOptions): ItemGroup[] {
     ? sorted.filter(item => !(isTodo(item) && item.completed))
     : sorted
 
-  // For position-based view, we return a single group with all items
-  // The view component handles rendering titles/todos/separators differently
-  // But we also create sub-groups for titles to support collapsing
+  // Group items by indent level:
+  // - Level 0 (indent === 0 or undefined): Standalone tasks and project titles
+  // - Level 1+ (indent >= 1): Tasks belonging to the nearest title above them
 
   const groups: ItemGroup[] = []
   let currentGroup: ItemGroup | null = null
@@ -133,28 +133,20 @@ function groupByPosition(items: Item[], options: GroupingOptions): ItemGroup[] {
         currentGroup.items = [item]
       }
       groups.push(currentGroup)
-    } else if (isSeparator(item)) {
-      // Separators end the current group
-      if (currentGroup) {
-        currentGroup = null
-      }
-      // Add separator as its own group
-      groups.push({
-        key: `separator-${item.id}`,
-        label: "",
-        items: [item],
-        metadata: { isCollapsible: false }
-      })
     } else if (isTodo(item)) {
-      if (currentGroup && !collapsedTitles?.has(currentGroup.metadata?.titleItem?.id ?? "")) {
-        // Add to current title group
+      const itemIndent = item.indent ?? 0
+
+      // Tasks with indent > 0 belong to the current project (if there is one)
+      // Tasks with indent === 0 are standalone, even if after a title
+      if (itemIndent > 0 && currentGroup && !collapsedTitles?.has(currentGroup.metadata?.titleItem?.id ?? "")) {
+        // Add to current title group (indented task)
         currentGroup.items.push(item)
         currentGroup.totalCount = (currentGroup.totalCount ?? 0) + 1
-      } else if (currentGroup) {
+      } else if (itemIndent > 0 && currentGroup) {
         // Title is collapsed, just count
         currentGroup.totalCount = (currentGroup.totalCount ?? 0) + 1
       } else {
-        // Standalone todo (no title above)
+        // Standalone todo (indent === 0 or no title above)
         standaloneItems.push(item)
       }
     }
@@ -359,7 +351,7 @@ function groupByCategory(items: Item[], options: GroupingOptions): ItemGroup[] {
 }
 
 /**
- * Group items by project (title)
+ * Group items by project (title) - uses indent to determine membership
  */
 function groupByProject(items: Item[], options: GroupingOptions): ItemGroup[] {
   const { hideCompleted, collapsedGroups } = options
@@ -376,12 +368,12 @@ function groupByProject(items: Item[], options: GroupingOptions): ItemGroup[] {
     if (isTitle(item)) {
       currentTitleId = item.id
       projectMap.set(item.id, { title: item, todos: [] })
-    } else if (isSeparator(item)) {
-      currentTitleId = null
     } else if (isTodo(item)) {
       if (hideCompleted && item.completed) continue
 
-      if (currentTitleId && projectMap.has(currentTitleId)) {
+      const itemIndent = item.indent ?? 0
+      // Only indented tasks belong to the current project
+      if (itemIndent > 0 && currentTitleId && projectMap.has(currentTitleId)) {
         projectMap.get(currentTitleId)!.todos.push(item)
       } else {
         noProjectTodos.push(item)

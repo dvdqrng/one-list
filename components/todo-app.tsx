@@ -21,10 +21,12 @@ import {
   SidebarProvider,
   useSidebar,
 } from "./ui/sidebar"
-import { TagIcon, LightningIcon, MoonIcon, SunIcon, SidebarSimpleIcon, EyeIcon, EyeSlashIcon, CalendarBlankIcon, ListBulletsIcon, KanbanIcon, CaretDownIcon } from "@phosphor-icons/react"
+import { TagIcon, LightningIcon, MoonIcon, SunIcon, SidebarSimpleIcon, EyeIcon, EyeSlashIcon, CalendarBlankIcon, ListBulletsIcon, KanbanIcon, CaretDownIcon, CheckSquareIcon, TextTIcon } from "@phosphor-icons/react"
+import { ToggleGroup, ToggleGroupItem } from "./ui/toggle-group"
 import { useTheme } from "next-themes"
 import { aiQueueManager } from "@/lib/ai"
 import { useStore, useTodos, useSelectedTodo, useSelectedTitle } from "@/lib/store"
+import { setFocusTarget } from "@/lib/focus-target"
 import { useFocusTimer } from "@/hooks/use-focus-timer"
 import { getDateForCategory, type DueDateCategory } from "@/lib/format"
 import type { Todo, ProposedChange } from "@/lib/types"
@@ -72,13 +74,16 @@ export function TodoApp() {
     setShowChangelog,
     applyChanges,
     insertItemAfter,
-    moveToProject,
+    deleteItem,
   } = useStore()
 
   // Derived state from store
   const todos = useTodos()
   const selectedTodo = useSelectedTodo()
   const selectedTitle = useSelectedTitle()
+
+  // Determine current editing mode based on selection
+  const editingMode = selectedTitle ? "title" : selectedTodo ? "task" : null
 
   // Local UI state
   const [isProcessing, setIsProcessing] = React.useState(false)
@@ -93,6 +98,23 @@ export function TodoApp() {
   const handleStartFocus = useCallback(() => {
     startTimer(1500) // 25 minutes
   }, [startTimer])
+
+  // Handler for switching between task and title modes
+  const handleModeChange = useCallback((newMode: string) => {
+    if (newMode === "task" && selectedTitle) {
+      // Convert title to task
+      const newId = insertItemAfter(selectedTitle.id, 'todo')
+      updateItemDebounced(newId, { title: selectedTitle.text || '' })
+      setFocusTarget(newId)
+      deleteItem(selectedTitle.id)
+    } else if (newMode === "title" && selectedTodo) {
+      // Convert task to title
+      const newId = insertItemAfter(selectedTodo.id, 'title')
+      updateItemDebounced(newId, { text: selectedTodo.title || '' })
+      setFocusTarget(newId)
+      deleteItem(selectedTodo.id)
+    }
+  }, [selectedTitle, selectedTodo, insertItemAfter, updateItemDebounced, deleteItem])
 
   // Load initial data
   useEffect(() => {
@@ -122,14 +144,6 @@ export function TodoApp() {
     const todosToUpdate = items.filter(i => i.type === "todo" && i.category === oldName)
     for (const item of todosToUpdate) {
       updateItem(item.id, { category: newName })
-    }
-  }, [items, updateItem])
-
-  const handleDeleteCategory = useCallback(async (categoryName: string) => {
-    // Remove category from all todos that have it
-    const todosToUpdate = items.filter(i => i.type === "todo" && i.category === categoryName)
-    for (const item of todosToUpdate) {
-      updateItem(item.id, { category: undefined })
     }
   }, [items, updateItem])
 
@@ -201,10 +215,6 @@ export function TodoApp() {
     }
   }, [applyChanges])
 
-  const handleMoveToProject = useCallback(async (todoId: string, projectId: string | null) => {
-    await moveToProject(todoId, projectId)
-  }, [moveToProject])
-
   // Handler for adding a new todo from kanban view
   const handleAddTodoFromKanban = useCallback((columnId: string) => {
     // Determine what field to set based on the kanban groupBy
@@ -258,6 +268,29 @@ export function TodoApp() {
         >
           <div className="flex-1" />
           <div className="flex items-center gap-1" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+            {/* Mode selector - only show when an item is selected */}
+            {editingMode && (
+              <>
+                <ToggleGroup
+                  type="single"
+                  value={editingMode}
+                  onValueChange={(value) => value && handleModeChange(value)}
+                  size="sm"
+                  variant="outline"
+                  className="h-7"
+                >
+                  <ToggleGroupItem value="task" aria-label="Task mode" className="h-7 px-2 text-xs gap-1">
+                    <CheckSquareIcon className="h-3.5 w-3.5" weight={editingMode === "task" ? "fill" : "regular"} />
+                    Task
+                  </ToggleGroupItem>
+                  <ToggleGroupItem value="title" aria-label="Title mode" className="h-7 px-2 text-xs gap-1">
+                    <TextTIcon className="h-3.5 w-3.5" weight={editingMode === "title" ? "fill" : "regular"} />
+                    Title
+                  </ToggleGroupItem>
+                </ToggleGroup>
+                <Separator orientation="vertical" className="mx-1 data-[orientation=vertical]:h-4" />
+              </>
+            )}
             {/* View Mode Toggle */}
             <Button
               variant="ghost"
@@ -405,8 +438,6 @@ export function TodoApp() {
         onUpdateTodo={handleUpdateTodo}
         onUpdateTitle={handleUpdateTitle}
         onRenameCategory={handleRenameCategory}
-        onDeleteCategory={handleDeleteCategory}
-        onMoveToProject={handleMoveToProject}
       />
 
       <ChangelogDialog
