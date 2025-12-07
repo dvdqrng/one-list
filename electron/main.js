@@ -565,24 +565,21 @@ async function migrateToItemsTable() {
 
 // ========== Auto-Updater Configuration ==========
 
-// Configure auto-updater
-autoUpdater.autoDownload = false; // Don't auto-download, ask user first
+// Configure auto-updater for silent updates
+autoUpdater.autoDownload = true; // Automatically download updates
 autoUpdater.autoInstallOnAppQuit = true; // Install when app quits
 
-// Auto-updater event handlers
+// Auto-updater event handlers (logging only)
 autoUpdater.on('checking-for-update', () => {
   console.log('Checking for updates...');
 });
 
 autoUpdater.on('update-available', (info) => {
-  console.log('Update available:', info.version);
-  if (mainWindow) {
-    mainWindow.webContents.send('update-available', info);
-  }
+  console.log('Update available:', info.version, '- downloading automatically...');
 });
 
-autoUpdater.on('update-not-available', (info) => {
-  console.log('No updates available');
+autoUpdater.on('update-not-available', () => {
+  console.log('App is up to date');
 });
 
 autoUpdater.on('error', (err) => {
@@ -590,17 +587,11 @@ autoUpdater.on('error', (err) => {
 });
 
 autoUpdater.on('download-progress', (progressObj) => {
-  console.log(`Download progress: ${progressObj.percent}%`);
-  if (mainWindow) {
-    mainWindow.webContents.send('download-progress', progressObj);
-  }
+  console.log(`Download progress: ${Math.round(progressObj.percent)}%`);
 });
 
 autoUpdater.on('update-downloaded', (info) => {
-  console.log('Update downloaded:', info.version);
-  if (mainWindow) {
-    mainWindow.webContents.send('update-downloaded', info);
-  }
+  console.log('Update downloaded:', info.version, '- will install on next restart');
 });
 
 // IPC handlers for update actions
