@@ -22,6 +22,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { WarningCircleIcon, FolderIcon, PencilSimpleIcon } from "@phosphor-icons/react"
+import { useStore } from "@/lib/store"
 import type { Todo, Title, TodoStatus, Item } from "@/lib/types"
 import { sortItemsByPosition, isTodo, isTitle, isSeparator } from "@/lib/types"
 import { cn } from "@/lib/utils"
@@ -42,17 +43,14 @@ export function TodoSidebar({ selectedTodo, selectedTitle, allTodos, allItems, o
   const [editingCategory, setEditingCategory] = useState<string | null>(null)
   const [editingCategoryValue, setEditingCategoryValue] = useState("")
   const titleInputRef = useRef<HTMLTextAreaElement>(null)
+  const clearPendingFocus = useStore((state) => state.clearPendingFocus)
 
-  // Auto-focus title input when a new todo with empty title is selected
+  // Auto-focus title input when this todo has pending focus and empty title
   useEffect(() => {
-    if (selectedTodo && !selectedTodo.title?.trim()) {
-      // Small delay to ensure the sidebar is open and rendered
-      const timer = setTimeout(() => {
-        titleInputRef.current?.focus()
-      }, 100)
-      return () => clearTimeout(timer)
+    if (selectedTodo && clearPendingFocus(selectedTodo.id) && !selectedTodo.title?.trim()) {
+      titleInputRef.current?.focus()
     }
-  }, [selectedTodo?.id])
+  }, [selectedTodo?.id, clearPendingFocus])
 
   // Sort items by position for group calculations
   const sortedItems = useMemo(() => sortItemsByPosition(allItems), [allItems])
@@ -184,7 +182,7 @@ export function TodoSidebar({ selectedTodo, selectedTitle, allTodos, allItems, o
             className="flex-1 p-6 group-data-[collapsible=icon]:hidden"
           />
         ) : (
-          <div className="p-4 space-y-4 group-data-[collapsible=icon]:hidden">
+          <div key={selectedTodo.id} className="p-4 space-y-4 group-data-[collapsible=icon]:hidden">
             {/* Title */}
             <div className="space-y-2">
               <Label htmlFor="title">Title</Label>

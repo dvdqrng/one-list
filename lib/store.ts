@@ -25,9 +25,11 @@ interface AppState {
   isLoading: boolean
   error: string | null
 
-  // Selection (keep flat for backwards compatibility)
-  selectedTodoId: string | null
-  selectedTitleId: string | null
+  // Unified selection & focus
+  // activeItemId: The item shown in sidebar (todo or title)
+  // pendingFocusId: Item that should receive DOM focus on next render (then auto-clears)
+  activeItemId: string | null
+  pendingFocusId: string | null
 
   // UI state
   showMetadata: boolean
@@ -63,9 +65,11 @@ interface AppActions {
   addItems: (items: Item[]) => Promise<void>
   reorderItems: (items: Item[]) => Promise<void>
 
-  // Selection
-  selectTodo: (id: string | null) => void
-  selectTitle: (id: string | null) => void
+  // Unified selection & focus
+  setActiveItem: (id: string | null) => void
+  setActiveItemAndFocus: (id: string | null) => void
+  setPendingFocus: (id: string | null) => void
+  clearPendingFocus: (id: string) => boolean
 
   // UI toggles
   setShowMetadata: (show: boolean) => void
@@ -112,9 +116,9 @@ export const useStore = create<AppState & AppActions>()(
       isLoading: true,
       error: null,
 
-      // Selection
-      selectedTodoId: null,
-      selectedTitleId: null,
+      // Unified selection & focus
+      activeItemId: null,
+      pendingFocusId: null,
 
       // UI state
       showMetadata: false,
@@ -214,10 +218,8 @@ export const useStore = create<AppState & AppActions>()(
         const item = get().items.find((i) => i.id === id)
         set((state) => ({ items: state.items.filter((i) => i.id !== id) }))
 
-        // Clear selection if deleted
-        const { selectedTodoId, selectedTitleId } = get()
-        if (selectedTodoId === id) set({ selectedTodoId: null })
-        if (selectedTitleId === id) set({ selectedTitleId: null })
+        // Clear active item if deleted
+        if (get().activeItemId === id) set({ activeItemId: null })
 
         try {
           await itemsDB.deleteItem(id)
@@ -273,18 +275,32 @@ export const useStore = create<AppState & AppActions>()(
       },
 
       // ============================================
-      // Selection
+      // Unified Selection & Focus
       // ============================================
 
-      selectTodo: (id: string | null) => {
-        set((state) => ({
-          selectedTodoId: state.selectedTodoId === id ? null : id,
-          selectedTitleId: null,
-        }))
+      // Set active item (for sidebar display) without changing focus
+      setActiveItem: (id: string | null) => {
+        set({ activeItemId: id })
       },
 
-      selectTitle: (id: string | null) => {
-        set({ selectedTitleId: id, selectedTodoId: null })
+      // Set active item AND mark it for focus (common case: clicking an item)
+      setActiveItemAndFocus: (id: string | null) => {
+        set({ activeItemId: id, pendingFocusId: id })
+      },
+
+      // Set pending focus without changing active item (rare: keyboard nav)
+      setPendingFocus: (id: string | null) => {
+        set({ pendingFocusId: id })
+      },
+
+      // Claim pending focus - returns true if this id was pending, clears it
+      // Call this in useEffect to know if component should focus itself
+      clearPendingFocus: (id: string): boolean => {
+        if (get().pendingFocusId === id) {
+          set({ pendingFocusId: null })
+          return true
+        }
+        return false
       },
 
       // ============================================
@@ -530,24 +546,40 @@ export function useSortedItems(): Item[] {
   return useMemo(() => sortItemsByPosition(items), [items])
 }
 
-export function useSelectedTodo(): Todo | undefined {
+/**
+ * Get the active item as a Todo (if it's a todo) or undefined
+ */
+export function useActiveItem(): { todo: Todo | undefined; title: Title | undefined } {
   const items = useStore((state) => state.items)
-  const selectedTodoId = useStore((state) => state.selectedTodoId)
+  const activeItemId = useStore((state) => state.activeItemId)
   return useMemo(() => {
-    if (!selectedTodoId) return undefined
-    const item = items.find((i) => i.id === selectedTodoId)
-    return item ? itemToTodo(item, items) ?? undefined : undefined
-  }, [items, selectedTodoId])
+    if (!activeItemId) return { todo: undefined, title: undefined }
+    const item = items.find((i) => i.id === activeItemId)
+    if (!item) return { todo: undefined, title: undefined }
+    if (isTodo(item)) {
+      return { todo: itemToTodo(item, items) ?? undefined, title: undefined }
+    }
+    if (isTitle(item)) {
+      return { todo: undefined, title: itemToTitle(item) ?? undefined }
+    }
+    return { todo: undefined, title: undefined }
+  }, [items, activeItemId])
 }
 
+/**
+ * @deprecated Use useActiveItem instead
+ */
+export function useSelectedTodo(): Todo | undefined {
+  const { todo } = useActiveItem()
+  return todo
+}
+
+/**
+ * @deprecated Use useActiveItem instead
+ */
 export function useSelectedTitle(): Title | undefined {
-  const items = useStore((state) => state.items)
-  const selectedTitleId = useStore((state) => state.selectedTitleId)
-  return useMemo(() => {
-    if (!selectedTitleId) return undefined
-    const item = items.find((i) => i.id === selectedTitleId)
-    return item ? itemToTitle(item) ?? undefined : undefined
-  }, [items, selectedTitleId])
+  const { title } = useActiveItem()
+  return title
 }
 
 export function useCategories(): string[] {
