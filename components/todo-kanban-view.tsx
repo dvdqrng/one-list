@@ -12,7 +12,7 @@ import {
 import { TaskItem } from "@/components/ui/task-item"
 import { useGroupedItems, type GroupBy } from "@/lib/grouping"
 import { useFocusManager } from "@/hooks/use-focus-manager"
-import { setFocusTarget } from "@/lib/focus-target"
+import { useStore } from "@/lib/store"
 import { getDateForCategory, type DueDateCategory } from "@/lib/format"
 import type { Item, Todo, KanbanGroupBy } from "@/lib/types"
 import { isTodo } from "@/lib/types"
@@ -64,7 +64,6 @@ interface TodoKanbanViewProps {
   showMetadata: boolean
   onUpdateTodo: (id: string, updates: Partial<Todo>) => void
   onToggleTodo: (id: string) => void
-  onSelectTodo: (id: string) => void
   onAddTodo: (columnId: string) => void
 }
 
@@ -79,7 +78,6 @@ export function TodoKanbanView({
   showMetadata,
   onUpdateTodo,
   onToggleTodo,
-  onSelectTodo,
   onAddTodo,
 }: TodoKanbanViewProps) {
   // Use centralized grouping
@@ -145,15 +143,18 @@ export function TodoKanbanView({
   // Use focus manager (same pattern as list view)
   const focusManager = useFocusManager(focusableIds)
 
+  // Get store actions for unified focus/selection
+  const { setActiveItem, setPendingFocus } = useStore()
+
   // Auto-focus newly created todos (empty title)
   useEffect(() => {
     const allTodos = Object.values(groupedData).flat()
     const emptyTitleTodo = allTodos.find((t) => !t.title?.trim())
     if (emptyTitleTodo) {
-      onSelectTodo(emptyTitleTodo.id)
-      setFocusTarget(emptyTitleTodo.id)
+      setActiveItem(emptyTitleTodo.id)
+      setPendingFocus(emptyTitleTodo.id)
     }
-  }, [groupedData, onSelectTodo])
+  }, [groupedData, setActiveItem, setPendingFocus])
 
   // Handle data change from drag and drop
   const handleDataChange = useCallback(
@@ -240,7 +241,7 @@ export function TodoKanbanView({
                 <KanbanCard
                   id={todo.id}
                   data-kanban-card={todo.id}
-                  onClick={() => onSelectTodo(todo.id)}
+                  onClick={() => setActiveItem(todo.id)}
                   className="p-0"
                 >
                   <TaskItem
@@ -250,6 +251,7 @@ export function TodoKanbanView({
                       const completed = status === "done"
                       onUpdateTodo(id, { status, completed })
                     }}
+                    onSelect={setActiveItem}
                     onTitleChange={(id, title) => onUpdateTodo(id, { title })}
                     mode="always"
                     showMetadata={showMetadata}
@@ -259,8 +261,20 @@ export function TodoKanbanView({
                       ...(groupBy === "category" ? (["category"] as const) : []),
                     ]}
                     keyboard={{
-                      onArrowUp: () => focusManager.focusPrev(todo.id),
-                      onArrowDown: () => focusManager.focusNext(todo.id),
+                      onArrowUp: () => {
+                        const prevId = focusManager.getPrevId(todo.id)
+                        if (prevId) {
+                          setActiveItem(prevId)
+                          focusManager.focus(prevId)
+                        }
+                      },
+                      onArrowDown: () => {
+                        const nextId = focusManager.getNextId(todo.id)
+                        if (nextId) {
+                          setActiveItem(nextId)
+                          focusManager.focus(nextId)
+                        }
+                      },
                     }}
                     className="px-2 py-1.5"
                   />

@@ -23,7 +23,6 @@ import { DueDateHeader } from "@/components/ui/collapsible-header"
 import { TaskItem } from "@/components/ui/task-item"
 import { useGroupedItems, getItemIdsFromGroups } from "@/lib/grouping"
 import { useFocusManager, type KeyboardActions } from "@/hooks/use-focus-manager"
-import { setFocusTarget, claimFocusTarget } from "@/lib/focus-target"
 import { getDateForCategory, type DueDateCategory } from "@/lib/format"
 import { sortItemsByPosition, isTodo, isTitle } from "@/lib/types"
 import { cn } from "@/lib/utils"
@@ -50,15 +49,16 @@ const TitleInput = forwardRef<HTMLInputElement, TitleInputProps>(
     const inputRef = useRef<HTMLInputElement>(null)
     const isInitialMount = useRef(true)
     const lastSyncedText = useRef(text || "")
+    const clearPendingFocus = useStore((state) => state.clearPendingFocus)
 
     useImperativeHandle(ref, () => inputRef.current as HTMLInputElement)
 
-    // On mount: check if this title should be focused
+    // On mount: check if this title should be focused via pendingFocusId
     useEffect(() => {
-      if (claimFocusTarget(id)) {
+      if (clearPendingFocus(id)) {
         inputRef.current?.focus()
       }
-    }, []) // Only on mount
+    }, [id, clearPendingFocus])
 
     // Sync value only when not focused AND text changed externally
     useEffect(() => {
@@ -114,8 +114,8 @@ export function TodoTextEditor({ onStartFocus }: TodoTextEditorProps) {
     updateItemDebounced,
     deleteItem,
     reorderItems,
-    selectTodo,
-    selectTitle,
+    setActiveItem,
+    setPendingFocus,
     insertItemAfter,
   } = useStore()
   // ============================================
@@ -267,13 +267,13 @@ export function TodoTextEditor({ onStartFocus }: TodoTextEditorProps) {
         // Convert todo to title
         const newId = insertItemAfter(item.id, 'title')
         updateItemDebounced(newId, { text: item.title || '' })
-        setFocusTarget(newId)
+        setPendingFocus(newId)
         deleteItem(item.id)
       } else if (isTitle(item)) {
         // Convert title to todo
         const newId = insertItemAfter(item.id, 'todo')
         updateItemDebounced(newId, { title: item.text || '' })
-        setFocusTarget(newId)
+        setPendingFocus(newId)
         deleteItem(item.id)
       }
     },
@@ -287,8 +287,20 @@ export function TodoTextEditor({ onStartFocus }: TodoTextEditorProps) {
         updateItemDebounced(item.id, { indent: Math.max(0, (item.indent ?? 0) - 1) })
       }
     },
-    onArrowUp: () => focusManager.focusPrev(item.id),
-    onArrowDown: () => focusManager.focusNext(item.id),
+    onArrowUp: () => {
+      const prevId = focusManager.getPrevId(item.id)
+      if (prevId) {
+        setActiveItem(prevId)
+        focusManager.focus(prevId)
+      }
+    },
+    onArrowDown: () => {
+      const nextId = focusManager.getNextId(item.id)
+      if (nextId) {
+        setActiveItem(nextId)
+        focusManager.focus(nextId)
+      }
+    },
     onEnter: () => {
       const initialData: Partial<Todo> = {}
       if (options?.category === "now") {
@@ -298,16 +310,17 @@ export function TodoTextEditor({ onStartFocus }: TodoTextEditorProps) {
         if (dueDate) initialData.dueDate = dueDate
       }
       const newId = insertItemAfter(item.id, 'todo', initialData)
-      setFocusTarget(newId)
+      setPendingFocus(newId)
     },
     onBackspaceEmpty: () => {
       const targetId = focusManager.getPrevId(item.id)
       if (targetId) {
+        setActiveItem(targetId)
         focusManager.focus(targetId)
       }
       deleteItem(item.id)
     },
-  }), [insertItemAfter, updateItemDebounced, deleteItem, focusManager])
+  }), [insertItemAfter, updateItemDebounced, deleteItem, focusManager, setActiveItem, setPendingFocus])
 
   // ============================================
   // Initial Item Effect
@@ -341,14 +354,14 @@ export function TodoTextEditor({ onStartFocus }: TodoTextEditorProps) {
         const completed = status === "done"
         updateItemDebounced(id, { status, completed })
       }}
-      onSelect={selectTodo}
+      onSelect={setActiveItem}
       onTitleChange={(id, title) => updateItemDebounced(id, { title })}
       mode="always"
       indentLevel={options?.indentLevel ?? 0}
       showMetadata={showMetadata}
       keyboard={createKeyboardHandlers(item, options)}
     />
-  ), [focusManager, selectTodo, updateItemDebounced, showMetadata, createKeyboardHandlers])
+  ), [focusManager, setActiveItem, updateItemDebounced, showMetadata, createKeyboardHandlers])
 
   const renderTitle = useCallback((item: Item, _isFirst: boolean) => {
     const isCollapsed = collapsedTitles.has(item.id)
@@ -377,7 +390,7 @@ export function TodoTextEditor({ onStartFocus }: TodoTextEditorProps) {
     return (
       <div
         className="group flex items-center gap-1 px-3 py-2 transition-colors cursor-pointer"
-        onClick={() => selectTitle(item.id)}
+        onClick={() => setActiveItem(item.id)}
       >
         <button
           type="button"
@@ -399,11 +412,11 @@ export function TodoTextEditor({ onStartFocus }: TodoTextEditorProps) {
           text={item.text || ''}
           onTextChange={(id, text) => updateItemDebounced(id, { text })}
           onKeyDown={handleKeyDown}
-          onFocus={() => selectTitle(item.id)}
+          onFocus={() => setActiveItem(item.id)}
         />
       </div>
     )
-  }, [collapsedTitles, focusManager, selectTitle, updateItemDebounced, createKeyboardHandlers, toggleTitleCollapse])
+  }, [collapsedTitles, focusManager, setActiveItem, updateItemDebounced, createKeyboardHandlers, toggleTitleCollapse])
 
   const renderPlaceholder = useCallback((category: string) => {
     const placeholderId = `placeholder-${category}`
@@ -435,13 +448,13 @@ export function TodoTextEditor({ onStartFocus }: TodoTextEditorProps) {
             }
             const newId = insertItemAfter(null, 'todo', initialData)
             setPlaceholderTitles(prev => ({ ...prev, [category]: "" }))
-            setFocusTarget(newId)
+            setPendingFocus(newId)
           },
         }}
         placeholder="Type to add a task..."
       />
     )
-  }, [placeholderTitles, insertItemAfter, focusManager])
+  }, [placeholderTitles, insertItemAfter, focusManager, setPendingFocus])
 
   // ============================================
   // Render Due Date View

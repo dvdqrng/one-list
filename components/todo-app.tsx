@@ -62,7 +62,6 @@ export function TodoApp() {
     updateItem,
     updateItemDebounced,
     toggleItem,
-    selectTodo,
     setShowMetadata,
     setShowCompleted,
     setListGroupBy,
@@ -135,10 +134,6 @@ export function TodoApp() {
 
   // Use store actions directly for simple operations
   const handleToggleTodo = toggleItem
-
-  const handleSelectTodo = useCallback((id: string) => {
-    selectTodo(id)
-  }, [selectTodo])
 
   // Handler for when AI input or merge button proposes changes
   const handleChangesProposed = useCallback((
@@ -381,7 +376,6 @@ export function TodoApp() {
                   showMetadata={showMetadata}
                   onUpdateTodo={handleUpdateTodo}
                   onToggleTodo={handleToggleTodo}
-                  onSelectTodo={handleSelectTodo}
                   onAddTodo={handleAddTodoFromKanban}
                 />
               </div>

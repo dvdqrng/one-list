@@ -1,9 +1,9 @@
 /**
- * Simplified Focus Manager
+ * Focus Manager
  *
- * ONLY manages refs for programmatic focus (arrow key navigation).
- * Does NOT handle focus for new items - that's done via focus-target.ts
- * where new components check on mount if they should focus themselves.
+ * Manages refs for programmatic focus (arrow key navigation).
+ * Focus for new items is handled via store.pendingFocusId where
+ * new components check on mount if they should focus themselves.
  */
 
 import { useCallback, useEffect, useMemo, useRef } from "react"

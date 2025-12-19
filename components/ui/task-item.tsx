@@ -5,7 +5,7 @@ import { CheckCircleIcon, CircleIcon, SpinnerIcon } from "@phosphor-icons/react"
 import { Checkbox, type CheckboxStatus } from "@/components/ui/checkbox"
 import { MetadataBadges } from "@/components/ui/metadata-badges"
 import { cn } from "@/lib/utils"
-import { claimFocusTarget } from "@/lib/focus-target"
+import { useStore } from "@/lib/store"
 import type { Todo, TodoStatus } from "@/lib/types"
 
 // ============================================
@@ -167,6 +167,9 @@ export const TaskItem = forwardRef<HTMLInputElement, TaskItemProps>(
     // Expose the input ref to parent via forwardRef
     useImperativeHandle(ref, () => inputRef.current as HTMLInputElement)
 
+    // Get pending focus from store
+    const clearPendingFocus = useStore((state) => state.clearPendingFocus)
+
     // Resolve mode from props
     const resolvedMode: TaskItemMode = mode ?? (isEditingProp !== undefined ? "toggle" : "readonly")
 
@@ -184,16 +187,16 @@ export const TaskItem = forwardRef<HTMLInputElement, TaskItemProps>(
     const lastSyncedTitle = useRef(todo.title || "")
 
     // Check if this item should be focused:
-    // 1. On mount (for newly created items)
+    // 1. On mount (for newly created items via pendingFocusId)
     // 2. When showInput becomes true (for toggle mode editing)
     useEffect(() => {
-      if (showInput && claimFocusTarget(todo.id)) {
+      if (showInput && clearPendingFocus(todo.id)) {
         // Use setTimeout to ensure the DOM is fully ready
         setTimeout(() => {
           inputRef.current?.focus()
         }, 0)
       }
-    }, [showInput, todo.id])
+    }, [showInput, todo.id, clearPendingFocus])
 
     // Sync input value from props only when:
     // 1. Component just mounted (use defaultValue instead)

@@ -52,7 +52,8 @@
       "Bash(pnpm patch:*)",
       "Bash(pnpm patch-commit:*)",
       "Bash(pnpm why:*)",
-      "Bash(git tag:*)"
+      "Bash(git tag:*)",
+      "Bash(git checkout:*)"
     ],
     "deny": [],
     "ask": []
