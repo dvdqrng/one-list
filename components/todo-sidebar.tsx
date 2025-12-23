@@ -124,7 +124,7 @@ export function TodoSidebar({ selectedTodo, selectedTitle, allTodos, allItems, o
   }, [selectedTodo?.title])
 
   return (
-    <Sidebar side="right" variant="sidebar" collapsible="offcanvas" className="bg-transparent border-l">
+    <Sidebar side="right" variant="sidebar" collapsible="offcanvas" className="bg-background border-l">
       <SidebarHeader className="h-11 flex flex-row items-center justify-end px-4">
         {selectedTodo && (
           <Button

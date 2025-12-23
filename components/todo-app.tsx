@@ -4,7 +4,6 @@ import React, { useEffect, useCallback } from "react"
 import { TodoInput } from "./todo-input"
 import { TodoTextEditor } from "./todo-text-editor"
 import { TodoKanbanView } from "./todo-kanban-view"
-import { MergeButton } from "./merge-button"
 import { ChangelogDialog } from "./changelog-dialog"
 import { TodoSidebar } from "./todo-sidebar"
 import { FocusModeOverlay } from "./focus-mode-overlay"
@@ -23,7 +22,7 @@ import {
   useSidebar,
 } from "./ui/sidebar"
 import { RefreshCw } from "lucide-react"
-import { StarIcon, LightningIcon, MoonIcon, SunIcon, SidebarSimpleIcon, EyeIcon, EyeSlashIcon, CalendarBlankIcon, ListBulletsIcon, KanbanIcon, CaretDownIcon, DotsThreeVerticalIcon } from "@phosphor-icons/react"
+import { StarIcon, LightningIcon, MoonIcon, SunIcon, SidebarSimpleIcon, EyeIcon, EyeSlashIcon, CalendarBlankIcon, ListBulletsIcon, KanbanIcon, CaretDownIcon, DotsThreeVerticalIcon, IntersectIcon, SpinnerIcon } from "@phosphor-icons/react"
 import { useTheme } from "next-themes"
 import { aiQueueManager } from "@/lib/ai"
 import { useStore, useTodos, useSelectedTodo, useSelectedTitle } from "@/lib/store"
@@ -31,6 +30,7 @@ import { useFocusTimer } from "@/hooks/use-focus-timer"
 import { getDateForCategory, type DueDateCategory } from "@/lib/format"
 import { isTodo } from "@/lib/types"
 import type { Todo, ProposedChange } from "@/lib/types"
+import { findSimilarTasks } from "@/lib/api-bridge"
 import type { SimilarTaskGroup } from "@/lib/find-similar-tasks"
 
 function CustomSidebarTrigger() {
@@ -88,6 +88,7 @@ export function TodoApp() {
   const [showAiInput, setShowAiInput] = React.useState(false)
   const [isApplyingChanges, setIsApplyingChanges] = React.useState(false)
   const [showUpdateDialog, setShowUpdateDialog] = React.useState(false)
+  const [isSearchingSimilar, setIsSearchingSimilar] = React.useState(false)
   const { theme, setTheme } = useTheme()
 
   // Focus timer hook
@@ -226,6 +227,18 @@ export function TodoApp() {
 
     handleChangesProposed(changes, "", "merge-button")
   }, [todos, handleChangesProposed])
+
+  const handleFindSimilarTasks = useCallback(async () => {
+    setIsSearchingSimilar(true)
+    try {
+      const result = await findSimilarTasks(todos)
+      handleMergeGroupsFound(result.groups)
+    } catch (error) {
+      console.error("Error finding similar tasks:", error)
+    } finally {
+      setIsSearchingSimilar(false)
+    }
+  }, [todos, handleMergeGroupsFound])
 
   // Handler for applying approved changes from the changelog dialog
   const handleApplyChanges = useCallback(async (approvedChanges: ProposedChange[]) => {
@@ -399,11 +412,6 @@ export function TodoApp() {
                 <MoonIcon className="h-4 w-4" weight="regular" />
               )}
             </Button>
-            <Separator orientation="vertical" className="mx-2 data-[orientation=vertical]:h-4" />
-            <MergeButton todos={todos} onMergeGroupsFound={handleMergeGroupsFound} />
-            <Separator orientation="vertical" className="mx-2 data-[orientation=vertical]:h-4" />
-            <CustomSidebarTrigger />
-            <Separator orientation="vertical" className="mx-2 data-[orientation=vertical]:h-4" />
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground">
@@ -424,16 +432,33 @@ export function TodoApp() {
                     <span>Check for Updates...</span>
                   </DropdownMenuItem>
                 )}
+                <DropdownMenuItem
+                  onSelect={(e) => {
+                    e.preventDefault()
+                    handleFindSimilarTasks()
+                  }}
+                  disabled={isSearchingSimilar || todos.length < 2}
+                  className="gap-2 cursor-pointer"
+                >
+                  {isSearchingSimilar ? (
+                    <SpinnerIcon className="h-4 w-4 animate-spin" weight="bold" />
+                  ) : (
+                    <IntersectIcon className="h-4 w-4" />
+                  )}
+                  <span>Find Similar Tasks</span>
+                </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => window.open('https://github.com/dvdqrng/v0-intelligent-todo-app', '_blank')} className="gap-2 cursor-pointer">
                   <LightningIcon className="h-4 w-4" />
                   <span>GitHub Repository</span>
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
+            <Separator orientation="vertical" className="mx-2 data-[orientation=vertical]:h-4" />
+            <CustomSidebarTrigger />
           </div>
         </header>
         <div className="flex flex-1 flex-col">
-          <main className={viewMode === "list" ? "flex-1 overflow-auto" : "flex-1 overflow-hidden"}>
+          <main className={viewMode === "list" ? "flex-1 overflow-auto min-w-0" : "flex-1 overflow-hidden min-w-0"}>
             {viewMode === "list" ? (
               <div className="mx-auto max-w-4xl px-4 md:px-8 pb-6">
                 <TodoTextEditor onStartFocus={handleStartFocus} />
