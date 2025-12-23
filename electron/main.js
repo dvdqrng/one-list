@@ -23,13 +23,17 @@ function loadEnvFile() {
           if (trimmed && !trimmed.startsWith('#')) {
             const [key, ...valueParts] = trimmed.split('=');
             if (key && valueParts.length > 0) {
-              let value = valueParts.join('=');
-              // Remove quotes if present
-              if ((value.startsWith('"') && value.endsWith('"')) ||
-                (value.startsWith("'") && value.endsWith("'"))) {
-                value = value.slice(1, -1);
+              const envKey = key.trim();
+              // Don't override variables that are already set (like NODE_ENV from command line)
+              if (process.env[envKey] === undefined) {
+                let value = valueParts.join('=');
+                // Remove quotes if present
+                if ((value.startsWith('"') && value.endsWith('"')) ||
+                  (value.startsWith("'") && value.endsWith("'"))) {
+                  value = value.slice(1, -1);
+                }
+                process.env[envKey] = value;
               }
-              process.env[key.trim()] = value;
             }
           }
         });
@@ -639,6 +643,9 @@ ipcMain.handle('check-for-updates', async () => {
     return await autoUpdater.checkForUpdates();
   } catch (error) {
     console.error('Failed to check for updates:', error);
+    if (error.message.includes('404')) {
+      throw new Error('Update server returned 404. This usually means the GitHub repository is private or the release doesn\'t exist. Please ensure your repository is public or you have a GH_TOKEN configured.');
+    }
     throw error;
   }
 });
