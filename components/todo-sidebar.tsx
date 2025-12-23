@@ -21,7 +21,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { WarningCircleIcon, FolderIcon, PencilSimpleIcon } from "@phosphor-icons/react"
+import { DatePicker } from "@/components/ui/date-picker"
+import { LightningIcon, WarningCircleIcon, FolderIcon, PencilSimpleIcon } from "@phosphor-icons/react"
+import { aiQueueManager } from "@/lib/ai"
 import { useStore } from "@/lib/store"
 import type { Todo, Title, TodoStatus, Item } from "@/lib/types"
 import { sortItemsByPosition, isTodo, isTitle, isSeparator } from "@/lib/types"
@@ -42,8 +44,10 @@ interface TodoSidebarProps {
 export function TodoSidebar({ selectedTodo, selectedTitle, allTodos, allItems, onUpdateTodo, onUpdateTitle, onRenameCategory, onMoveToProject }: TodoSidebarProps) {
   const [editingCategory, setEditingCategory] = useState<string | null>(null)
   const [editingCategoryValue, setEditingCategoryValue] = useState("")
+  const [editingProject, setEditingProject] = useState(false)
+  const [editingProjectValue, setEditingProjectValue] = useState("")
   const titleInputRef = useRef<HTMLTextAreaElement>(null)
-  const clearPendingFocus = useStore((state) => state.clearPendingFocus)
+  const { clearPendingFocus, insertItemAfter } = useStore()
 
   // Auto-focus title input when this todo has pending focus and empty title
   useEffect(() => {
@@ -111,27 +115,48 @@ export function TodoSidebar({ selectedTodo, selectedTitle, allTodos, allItems, o
 
   const completedCount = projectTodos.filter((t) => t.completed).length
   const totalCount = projectTodos.length
+  // Auto-resize title textarea
+  useEffect(() => {
+    if (titleInputRef.current) {
+      titleInputRef.current.style.height = "auto"
+      titleInputRef.current.style.height = `${titleInputRef.current.scrollHeight}px`
+    }
+  }, [selectedTodo?.title])
 
   return (
-    <Sidebar side="right" variant="sidebar" collapsible="offcanvas" className="bg-sidebar">
-      <SidebarHeader
-        className="h-11 p-0"
-        style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
-      />
+    <Sidebar side="right" variant="sidebar" collapsible="offcanvas" className="bg-transparent border-l">
+      <SidebarHeader className="h-11 flex flex-row items-center justify-end px-4">
+        {selectedTodo && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7 text-muted-foreground"
+            onClick={() => {
+              aiQueueManager.enqueue({
+                todoId: selectedTodo.id,
+                inputText: selectedTodo.title || "",
+                type: "enhance",
+              })
+            }}
+            title="Re-enrich with AI"
+          >
+            <LightningIcon className="h-4 w-4" weight="regular" />
+          </Button>
+        )}
+      </SidebarHeader>
       <SidebarContent>
         {/* Project/Title Details View */}
         {selectedTitle ? (
-          <div className="p-4 space-y-4 group-data-[collapsible=icon]:hidden">
+          <div className="pt-0 px-4 pb-4 space-y-4 group-data-[collapsible=icon]:hidden">
             {/* Project Title */}
-            <div className="space-y-2">
-              <Label htmlFor="projectTitle">Project Name</Label>
+            <div className="space-y-0">
               <div className="flex items-center gap-2">
-                <FolderIcon className="h-5 w-5 text-muted-foreground shrink-0" weight="fill" />
+                <FolderIcon className="h-6 w-6 text-muted-foreground shrink-0" weight="fill" />
                 <Input
                   id="projectTitle"
                   value={selectedTitle.text}
                   onChange={(e) => onUpdateTitle?.(selectedTitle.id, e.target.value)}
-                  className="flex-1 border-border"
+                  className="flex-1 text-2xl font-bold border-none bg-transparent px-0 focus-visible:ring-0 focus-visible:outline-none focus-visible:ring-offset-0 shadow-none h-auto focus:ring-0 focus:outline-none"
                   placeholder="Project name..."
                 />
               </div>
@@ -140,38 +165,32 @@ export function TodoSidebar({ selectedTodo, selectedTitle, allTodos, allItems, o
             <SidebarSeparator />
 
             {/* Progress */}
-            <div className="space-y-2">
-              <Label>Progress</Label>
-              <ProgressIndicator
-                completed={completedCount}
-                total={totalCount}
-                label="tasks"
-                showLabel={false}
-              />
-            </div>
+            <ProgressIndicator
+              completed={completedCount}
+              total={totalCount}
+              label="tasks"
+              showLabel={false}
+            />
 
             <SidebarSeparator />
 
             {/* Tasks List */}
-            <div className="space-y-2">
-              <Label>Tasks ({totalCount})</Label>
-              <div className="space-y-1 max-h-[400px] overflow-y-auto">
-                {projectTodos.length === 0 ? (
-                  <EmptyState
-                    title="No tasks in this project"
-                    className="py-2"
+            <div className="space-y-1 max-h-[400px] overflow-y-auto">
+              {projectTodos.length === 0 ? (
+                <EmptyState
+                  title="No tasks in this project"
+                  className="py-2"
+                />
+              ) : (
+                projectTodos.map((todo) => (
+                  <TaskItem
+                    key={todo.id}
+                    todo={todo}
+                    size="sm"
+                    variant="icon"
                   />
-                ) : (
-                  projectTodos.map((todo) => (
-                    <TaskItem
-                      key={todo.id}
-                      todo={todo}
-                      size="sm"
-                      variant="icon"
-                    />
-                  ))
-                )}
-              </div>
+                ))
+              )}
             </div>
           </div>
         ) : !selectedTodo ? (
@@ -182,40 +201,42 @@ export function TodoSidebar({ selectedTodo, selectedTitle, allTodos, allItems, o
             className="flex-1 p-6 group-data-[collapsible=icon]:hidden"
           />
         ) : (
-          <div key={selectedTodo.id} className="p-4 space-y-4 group-data-[collapsible=icon]:hidden">
-            {/* Title */}
-            <div className="space-y-2">
-              <Label htmlFor="title">Title</Label>
-              <Textarea
-                ref={titleInputRef}
-                id="title"
-                value={selectedTodo.title}
-                onChange={(e) => onUpdateTodo?.(selectedTodo.id, { title: e.target.value })}
-                className={cn(
-                  "resize-none min-h-[60px] bg-transparent border-border",
-                  selectedTodo.completed && "line-through text-muted-foreground"
-                )}
-                placeholder="Task title..."
-              />
+          <div key={selectedTodo.id} className="flex-1 flex flex-col pt-0 px-4 pb-4 gap-4 group-data-[collapsible=icon]:hidden">
+            {/* Header section: Title and Notes with no gap */}
+            <div className="flex-1 flex flex-col">
+              {/* Title */}
+              <div className="space-y-0 p-0">
+                <Textarea
+                  ref={titleInputRef}
+                  id="title"
+                  value={selectedTodo.title}
+                  onChange={(e) => onUpdateTodo?.(selectedTodo.id, { title: e.target.value })}
+                  rows={1}
+                  className={cn(
+                    "resize-none min-h-0 overflow-hidden text-2xl font-bold border-none bg-transparent px-0 focus-visible:ring-0 focus-visible:outline-none focus-visible:ring-offset-0 shadow-none leading-tight focus:ring-0 focus:outline-none",
+                    selectedTodo.completed && "line-through text-muted-foreground"
+                  )}
+                  placeholder="Task title..."
+                />
+              </div>
+
+              {/* Notes (Expands to fill space within this group) */}
+              <div className="flex-1 flex flex-col p-0">
+                <Textarea
+                  id="notes"
+                  value={selectedTodo.details || ""}
+                  onChange={(e) => onUpdateTodo?.(selectedTodo.id, { details: e.target.value })}
+                  className="flex-1 resize-none min-h-0 bg-transparent border-none p-1 focus-visible:ring-0 focus-visible:outline-none focus-visible:ring-offset-0 focus:ring-0 focus:outline-none shadow-none"
+                  placeholder="Add notes..."
+                />
+              </div>
             </div>
 
-            {/* Notes */}
-            <div className="space-y-2">
-              <Label htmlFor="notes">Notes</Label>
-              <Textarea
-                id="notes"
-                value={selectedTodo.details || ""}
-                onChange={(e) => onUpdateTodo?.(selectedTodo.id, { details: e.target.value })}
-                className="resize-y min-h-[200px] bg-transparent border-border"
-                placeholder="Add notes..."
-              />
-            </div>
+            <SidebarSeparator className="mx-0" />
 
-            <SidebarSeparator />
-
+            {/* Properties (Naturally sitting at the bottom) */}
             {/* Priority */}
-            <div className="space-y-2">
-              <Label>Priority</Label>
+            <div className="p-0">
               <Select
                 value={selectedTodo.priority || "none"}
                 onValueChange={(value) =>
@@ -237,72 +258,99 @@ export function TodoSidebar({ selectedTodo, selectedTitle, allTodos, allItems, o
             </div>
 
             {/* Due Date */}
-            <div className="space-y-2">
-              <Label htmlFor="dueDate">Due Date</Label>
-              <div className="flex items-center gap-2">
-                <Input
-                  id="dueDate"
-                  type="date"
-                  value={selectedTodo.dueDate ? selectedTodo.dueDate.split("T")[0] : ""}
-                  onChange={(e) =>
-                    onUpdateTodo?.(selectedTodo.id, {
-                      dueDate: e.target.value ? new Date(e.target.value).toISOString() : undefined,
-                    })
-                  }
-                  className="border-border"
-                />
-                {selectedTodo.dueDate && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => onUpdateTodo?.(selectedTodo.id, { dueDate: undefined })}
-                  >
-                    Clear
-                  </Button>
-                )}
-              </div>
+            <div className="p-0">
+              <DatePicker
+                date={selectedTodo.dueDate ? new Date(selectedTodo.dueDate) : undefined}
+                setDate={(date) =>
+                  onUpdateTodo?.(selectedTodo.id, {
+                    dueDate: date ? date.toISOString() : undefined,
+                  })
+                }
+                placeholder="Pick a due date"
+              />
             </div>
 
             {/* Project */}
-            <div className="space-y-2">
-              <Label>Project</Label>
-              <Select
-                value={parentTitle?.id || "none"}
-                onValueChange={(value: string) => {
-                  onMoveToProject?.(selectedTodo.id, value === "none" ? null : value)
-                }}
-              >
-                <SelectTrigger className="w-full border-border">
-                  <SelectValue placeholder="Select project">
-                    <div className="flex items-center gap-2">
-                      {parentTitle ? (
-                        <>
-                          <FolderIcon className="h-4 w-4 text-muted-foreground shrink-0" weight="fill" />
-                          <span>{parentTitle.text}</span>
-                        </>
-                      ) : (
-                        <span className="text-muted-foreground">No project</span>
-                      )}
-                    </div>
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">No project</SelectItem>
-                  {allProjects.map((project) => (
-                    <SelectItem key={project.id} value={project.id}>
+            <div className="p-0">
+              {editingProject ? (
+                <div className="flex items-center gap-2">
+                  <Input
+                    value={editingProjectValue}
+                    onChange={(e) => setEditingProjectValue(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && editingProjectValue.trim()) {
+                        const newProjectId = insertItemAfter(null, "title", { text: editingProjectValue.trim() })
+                        onMoveToProject?.(selectedTodo.id, newProjectId)
+                        setEditingProject(false)
+                        setEditingProjectValue("")
+                      } else if (e.key === "Escape") {
+                        setEditingProject(false)
+                        setEditingProjectValue("")
+                      }
+                    }}
+                    className="border-border"
+                    placeholder="New project name..."
+                    autoFocus
+                  />
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      if (editingProjectValue.trim()) {
+                        const newProjectId = insertItemAfter(null, "title", { text: editingProjectValue.trim() })
+                        onMoveToProject?.(selectedTodo.id, newProjectId)
+                      }
+                      setEditingProject(false)
+                      setEditingProjectValue("")
+                    }}
+                  >
+                    Save
+                  </Button>
+                </div>
+              ) : (
+                <Select
+                  value={parentTitle?.id || "none"}
+                  onValueChange={(value: string) => {
+                    if (value === "__new__") {
+                      setEditingProject(true)
+                      setEditingProjectValue("")
+                    } else {
+                      onMoveToProject?.(selectedTodo.id, value === "none" ? null : value)
+                    }
+                  }}
+                >
+                  <SelectTrigger className="w-full border-border">
+                    <SelectValue placeholder="Select project">
                       <div className="flex items-center gap-2">
-                        <FolderIcon className="h-4 w-4 text-muted-foreground shrink-0" weight="fill" />
-                        <span>{project.text || "Untitled"}</span>
+                        {parentTitle ? (
+                          <>
+                            <FolderIcon className="h-4 w-4 text-muted-foreground shrink-0" weight="fill" />
+                            <span>{parentTitle.text}</span>
+                          </>
+                        ) : (
+                          <span className="text-muted-foreground">No project</span>
+                        )}
                       </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">No project</SelectItem>
+                    {allProjects.map((project) => (
+                      <SelectItem key={project.id} value={project.id}>
+                        <div className="flex items-center gap-2">
+                          <FolderIcon className="h-4 w-4 text-muted-foreground shrink-0" weight="fill" />
+                          <span>{project.text || "Untitled"}</span>
+                        </div>
+                      </SelectItem>
+                    ))}
+                    <SelectItem value="__new__">+ Add new project</SelectItem>
+                  </SelectContent>
+                </Select>
+              )}
             </div>
 
             {/* Category */}
-            <div className="space-y-2">
-              <Label>Category</Label>
+            <div className="p-0">
               {editingCategory ? (
                 <div className="flex items-center gap-2">
                   <Input
@@ -393,8 +441,7 @@ export function TodoSidebar({ selectedTodo, selectedTitle, allTodos, allItems, o
             </div>
 
             {/* Status */}
-            <div className="space-y-2">
-              <Label>Status</Label>
+            <div className="p-0">
               <Select
                 value={selectedTodo.status || "due"}
                 onValueChange={(value: TodoStatus) => {

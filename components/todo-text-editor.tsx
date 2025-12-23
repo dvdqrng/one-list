@@ -359,6 +359,7 @@ export function TodoTextEditor({ onStartFocus }: TodoTextEditorProps) {
       mode="always"
       indentLevel={options?.indentLevel ?? 0}
       showMetadata={showMetadata}
+      interactive={false}
       keyboard={createKeyboardHandlers(item, options)}
     />
   ), [focusManager, setActiveItem, updateItemDebounced, showMetadata, createKeyboardHandlers])
@@ -434,7 +435,7 @@ export function TodoTextEditor({ onStartFocus }: TodoTextEditorProps) {
         onTitleChange={(_, title) => {
           setPlaceholderTitles(prev => ({ ...prev, [category]: title }))
         }}
-        onToggle={() => {}}
+        onToggle={() => { }}
         keyboard={{
           onEnter: () => {
             const title = (placeholderTitles[category] || "").trim()
@@ -470,7 +471,7 @@ export function TodoTextEditor({ onStartFocus }: TodoTextEditorProps) {
         return (
           <div
             key={group.key}
-            className={cn("rounded-lg transition-colors", isNowCategory && "bg-primary/5")}
+            className={cn("rounded-lg transition-colors")}
           >
             <DueDateHeader
               category={group.key}
