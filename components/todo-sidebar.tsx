@@ -447,7 +447,8 @@ export function TodoSidebar({ selectedTodo, selectedTitle, allTodos, allItems, o
                 onValueChange={(value: TodoStatus) => {
                   onUpdateTodo?.(selectedTodo.id, {
                     status: value,
-                    completed: value === "done",
+                    completed: value === "done" || value === "archived",
+                    completedAt: (value === "done" || value === "archived") ? new Date().toISOString() : undefined,
                   })
                 }}
               >
@@ -458,6 +459,7 @@ export function TodoSidebar({ selectedTodo, selectedTitle, allTodos, allItems, o
                   <SelectItem value="due">Due</SelectItem>
                   <SelectItem value="in-progress">In Progress</SelectItem>
                   <SelectItem value="done">Done</SelectItem>
+                  <SelectItem value="archived">Archived</SelectItem>
                 </SelectContent>
               </Select>
             </div>

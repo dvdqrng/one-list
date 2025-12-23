@@ -60,6 +60,7 @@ interface AppActions {
   updateItemDebounced: (id: string, updates: Partial<Item>) => void
   deleteItem: (id: string) => Promise<void>
   toggleItem: (id: string) => Promise<void>
+  archiveOldDoneTasks: () => Promise<void>
 
   // Batch operations
   addItems: (items: Item[]) => Promise<void>
@@ -236,21 +237,49 @@ export const useStore = create<AppState & AppActions>()(
         if (!item || !isTodo(item)) return
 
         const newCompleted = !item.completed
+        const now = new Date().toISOString()
+        const updates: Partial<Item> = {
+          completed: newCompleted,
+          updatedAt: now,
+          status: newCompleted ? "done" : "due",
+          completedAt: newCompleted ? now : undefined,
+        }
+
         set((state) => ({
           items: state.items.map((i) =>
-            i.id === id ? { ...i, completed: newCompleted, updatedAt: new Date().toISOString() } : i
+            i.id === id ? { ...i, ...updates } : i
           ),
         }))
 
         try {
-          await itemsDB.toggleItem(id)
+          await itemsDB.updateItem(id, updates)
         } catch (error) {
           console.error("Failed to toggle item:", error)
           set((state) => ({
             items: state.items.map((i) =>
-              i.id === id ? { ...i, completed: !newCompleted } : i
+              i.id === id ? { ...i, completed: !newCompleted, status: !newCompleted ? "done" : "due", completedAt: !newCompleted ? item.completedAt : undefined } : i
             ),
           }))
+        }
+      },
+
+      archiveOldDoneTasks: async () => {
+        const { items, updateItem } = get()
+        const now = new Date()
+        const ARCHIVE_THRESHOLD_MS = 24 * 60 * 60 * 1000 // 24 hours
+
+        const itemsToArchive = items.filter((item) => {
+          if (!isTodo(item) || !item.completed || !item.completedAt || item.status === "archived") {
+            return false
+          }
+          const completedAt = new Date(item.completedAt)
+          return now.getTime() - completedAt.getTime() > ARCHIVE_THRESHOLD_MS
+        })
+
+        if (itemsToArchive.length === 0) return
+
+        for (const item of itemsToArchive) {
+          updateItem(item.id, { status: "archived" })
         }
       },
 
@@ -525,7 +554,7 @@ export function useTodos(): Todo[] {
   const items = useStore((state) => state.items)
   return useMemo(() => {
     return items
-      .filter(isTodo)
+      .filter((item) => isTodo(item) && item.status !== "archived")
       .map((item) => itemToTodo(item, items))
       .filter((t): t is Todo => t !== null)
   }, [items])
@@ -597,7 +626,7 @@ export function useNowTodos(): Todo[] {
   const items = useStore((state) => state.items)
   return useMemo(() => {
     return items
-      .filter((i) => isTodo(i) && i.isNow)
+      .filter((i) => isTodo(i) && i.isNow && i.status !== "archived")
       .map((item) => itemToTodo(item, items))
       .filter((t): t is Todo => t !== null)
   }, [items])

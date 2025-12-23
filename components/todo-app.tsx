@@ -8,6 +8,7 @@ import { MergeButton } from "./merge-button"
 import { ChangelogDialog } from "./changelog-dialog"
 import { TodoSidebar } from "./todo-sidebar"
 import { FocusModeOverlay } from "./focus-mode-overlay"
+import { UpdateDialog } from "./update-dialog"
 import { Button } from "./ui/button"
 import { Separator } from "./ui/separator"
 import {
@@ -21,7 +22,8 @@ import {
   SidebarProvider,
   useSidebar,
 } from "./ui/sidebar"
-import { StarIcon, LightningIcon, MoonIcon, SunIcon, SidebarSimpleIcon, EyeIcon, EyeSlashIcon, CalendarBlankIcon, ListBulletsIcon, KanbanIcon, CaretDownIcon } from "@phosphor-icons/react"
+import { RefreshCw } from "lucide-react"
+import { StarIcon, LightningIcon, MoonIcon, SunIcon, SidebarSimpleIcon, EyeIcon, EyeSlashIcon, CalendarBlankIcon, ListBulletsIcon, KanbanIcon, CaretDownIcon, DotsThreeVerticalIcon } from "@phosphor-icons/react"
 import { useTheme } from "next-themes"
 import { aiQueueManager } from "@/lib/ai"
 import { useStore, useTodos, useSelectedTodo, useSelectedTitle } from "@/lib/store"
@@ -73,6 +75,7 @@ export function TodoApp() {
     applyChanges,
     insertItemAfter,
     moveToProject,
+    archiveOldDoneTasks,
   } = useStore()
 
   // Derived state from store
@@ -84,6 +87,7 @@ export function TodoApp() {
   const [isProcessing, setIsProcessing] = React.useState(false)
   const [showAiInput, setShowAiInput] = React.useState(false)
   const [isApplyingChanges, setIsApplyingChanges] = React.useState(false)
+  const [showUpdateDialog, setShowUpdateDialog] = React.useState(false)
   const { theme, setTheme } = useTheme()
 
   // Focus timer hook
@@ -94,10 +98,19 @@ export function TodoApp() {
     startTimer(1500) // 25 minutes
   }, [startTimer])
 
-  // Load initial data
+  // Load initial data and run archive check
   useEffect(() => {
-    loadItems()
-  }, [loadItems])
+    loadItems().then(() => {
+      archiveOldDoneTasks()
+    })
+
+    // Periodically check for tasks to archive (every hour)
+    const interval = setInterval(() => {
+      archiveOldDoneTasks()
+    }, 60 * 60 * 1000)
+
+    return () => clearInterval(interval)
+  }, [loadItems, archiveOldDoneTasks])
 
   // Set up AI queue manager callback
   useEffect(() => {
@@ -246,7 +259,8 @@ export function TodoApp() {
           if (columnId === "none") return {}
           return { priority: columnId as Todo["priority"] }
         case "status":
-          if (columnId === "done") return { completed: true }
+          if (columnId === "done") return { completed: true, status: "done", completedAt: new Date().toISOString() }
+          if (columnId === "archived") return { completed: true, status: "archived", completedAt: new Date().toISOString() }
           return { status: columnId as Todo["status"] }
         case "category":
           if (columnId === "uncategorized") return {}
@@ -389,6 +403,33 @@ export function TodoApp() {
             <MergeButton todos={todos} onMergeGroupsFound={handleMergeGroupsFound} />
             <Separator orientation="vertical" className="mx-2 data-[orientation=vertical]:h-4" />
             <CustomSidebarTrigger />
+            <Separator orientation="vertical" className="mx-2 data-[orientation=vertical]:h-4" />
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground">
+                  <DotsThreeVerticalIcon className="h-5 w-5" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                {typeof window !== 'undefined' && window.electronDB && (
+                  <DropdownMenuItem
+                    onSelect={(e) => {
+                      e.preventDefault();
+                      console.log('Update menu item selected');
+                      setShowUpdateDialog(true);
+                    }}
+                    className="gap-2 cursor-pointer"
+                  >
+                    <RefreshCw className="h-4 w-4" />
+                    <span>Check for Updates...</span>
+                  </DropdownMenuItem>
+                )}
+                <DropdownMenuItem onClick={() => window.open('https://github.com/dvdqrng/v0-intelligent-todo-app', '_blank')} className="gap-2 cursor-pointer">
+                  <LightningIcon className="h-4 w-4" />
+                  <span>GitHub Repository</span>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </header>
         <div className="flex flex-1 flex-col">
@@ -443,6 +484,11 @@ export function TodoApp() {
 
       {/* Focus Mode Overlay - renders on top of everything when active */}
       <FocusModeOverlay />
+
+      <UpdateDialog
+        open={showUpdateDialog}
+        onOpenChange={setShowUpdateDialog}
+      />
     </SidebarProvider>
   )
 }

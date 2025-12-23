@@ -26,7 +26,7 @@ function loadEnvFile() {
               let value = valueParts.join('=');
               // Remove quotes if present
               if ((value.startsWith('"') && value.endsWith('"')) ||
-                  (value.startsWith("'") && value.endsWith("'"))) {
+                (value.startsWith("'") && value.endsWith("'"))) {
                 value = value.slice(1, -1);
               }
               process.env[key.trim()] = value;
@@ -333,7 +333,8 @@ async function initDatabase() {
       ai_processing_status TEXT,
       text TEXT,
       created_at TEXT NOT NULL,
-      updated_at TEXT
+      updated_at TEXT,
+      completed_at TEXT
     );
 
     CREATE INDEX IF NOT EXISTS idx_items_type ON items(type);
@@ -353,6 +354,14 @@ async function initDatabase() {
   try {
     db.run('ALTER TABLE items ADD COLUMN is_now INTEGER DEFAULT 0');
     console.log('Added is_now column to items table');
+  } catch (e) {
+    // Column already exists, ignore
+  }
+
+  // Add completed_at column if it doesn't exist (migration for existing databases)
+  try {
+    db.run('ALTER TABLE items ADD COLUMN completed_at TEXT');
+    console.log('Added completed_at column to items table');
   } catch (e) {
     // Column already exists, ignore
   }
@@ -531,8 +540,8 @@ async function migrateToItemsTable() {
 
     // Insert into items table with position
     const insertStmt = db.prepare(`
-      INSERT INTO items (id, type, position, title, details, completed, status, priority, due_date, category, indent, ai_processing_status, text, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO items (id, type, position, title, details, completed, status, priority, due_date, category, indent, ai_processing_status, text, created_at, updated_at, completed_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     allLegacyItems.forEach((item, index) => {
@@ -551,7 +560,8 @@ async function migrateToItemsTable() {
         item.ai_processing_status,
         item.text,
         item.created_at,
-        item.updated_at
+        item.updated_at,
+        item.completed ? item.updated_at || item.created_at : null
       ]);
     });
     insertStmt.free();
@@ -572,6 +582,9 @@ autoUpdater.autoInstallOnAppQuit = true; // Install when app quits
 // Auto-updater event handlers
 autoUpdater.on('checking-for-update', () => {
   console.log('Checking for updates...');
+  if (mainWindow) {
+    mainWindow.webContents.send('checking-for-update');
+  }
 });
 
 autoUpdater.on('update-available', (info) => {
@@ -583,10 +596,16 @@ autoUpdater.on('update-available', (info) => {
 
 autoUpdater.on('update-not-available', (info) => {
   console.log('No updates available');
+  if (mainWindow) {
+    mainWindow.webContents.send('update-not-available', info);
+  }
 });
 
 autoUpdater.on('error', (err) => {
   console.error('Auto-updater error:', err);
+  if (mainWindow) {
+    mainWindow.webContents.send('update-error', err.message);
+  }
 });
 
 autoUpdater.on('download-progress', (progressObj) => {
@@ -605,11 +624,22 @@ autoUpdater.on('update-downloaded', (info) => {
 
 // IPC handlers for update actions
 ipcMain.handle('check-for-updates', async () => {
+  if (process.env.NODE_ENV === 'development') {
+    console.log('Update check requested in development mode - simulating...');
+    if (mainWindow) {
+      mainWindow.webContents.send('checking-for-update');
+      setTimeout(() => {
+        mainWindow.webContents.send('update-not-available', { version: app.getVersion() });
+      }, 1000);
+    }
+    return null;
+  }
+
   try {
     return await autoUpdater.checkForUpdates();
   } catch (error) {
     console.error('Failed to check for updates:', error);
-    return null;
+    throw error;
   }
 });
 
@@ -802,7 +832,8 @@ ipcMain.handle('db:getItems', () => {
         aiProcessingStatus: row.ai_processing_status || undefined,
         text: row.text || undefined,
         createdAt: row.created_at,
-        updatedAt: row.updated_at || undefined
+        updatedAt: row.updated_at || undefined,
+        completedAt: row.completed_at || undefined
       });
     }
     stmt.free();
@@ -818,8 +849,8 @@ ipcMain.handle('db:createItem', (_, item) => {
   try {
     const now = new Date().toISOString();
     const stmt = db.prepare(`
-      INSERT INTO items (id, type, position, parent_id, title, details, completed, status, priority, due_date, category, indent, is_now, ai_processing_status, text, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO items (id, type, position, parent_id, title, details, completed, status, priority, due_date, category, indent, is_now, ai_processing_status, text, created_at, updated_at, completed_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     stmt.run([
@@ -839,7 +870,8 @@ ipcMain.handle('db:createItem', (_, item) => {
       item.aiProcessingStatus || null,
       item.text || null,
       item.createdAt || now,
-      now
+      now,
+      item.completedAt || (item.completed ? now : null)
     ]);
     stmt.free();
 
@@ -856,8 +888,8 @@ ipcMain.handle('db:createItems', (_, items) => {
   try {
     const now = new Date().toISOString();
     const stmt = db.prepare(`
-      INSERT INTO items (id, type, position, parent_id, title, details, completed, status, priority, due_date, category, indent, is_now, ai_processing_status, text, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO items (id, type, position, parent_id, title, details, completed, status, priority, due_date, category, indent, is_now, ai_processing_status, text, created_at, updated_at, completed_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     items.forEach(item => {
@@ -878,7 +910,8 @@ ipcMain.handle('db:createItems', (_, items) => {
         item.aiProcessingStatus || null,
         item.text || null,
         item.createdAt || now,
-        now
+        now,
+        item.completedAt || (item.completed ? now : null)
       ]);
     });
 
@@ -953,6 +986,10 @@ ipcMain.handle('db:updateItem', (_, id, updates) => {
       fields.push('parent_id = ?');
       params.push(updates.parentId || null);
     }
+    if ('completedAt' in updates) {
+      fields.push('completed_at = ?');
+      params.push(updates.completedAt || null);
+    }
 
     if (fields.length === 0) {
       return { id };
@@ -1012,8 +1049,14 @@ ipcMain.handle('db:deleteItem', (event, id) => {
 ipcMain.handle('db:toggleItem', (event, id) => {
   try {
     const now = new Date().toISOString();
-    const stmt = db.prepare('UPDATE items SET completed = NOT completed, updated_at = ? WHERE id = ?');
-    stmt.run([now, id]);
+    const stmt = db.prepare(`
+      UPDATE items 
+      SET completed = NOT completed, 
+          completed_at = CASE WHEN completed = 0 THEN ? ELSE NULL END,
+          updated_at = ? 
+      WHERE id = ?
+    `);
+    stmt.run([now, now, id]);
     stmt.free();
 
     const getItem = db.prepare('SELECT * FROM items WHERE id = ?');

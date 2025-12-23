@@ -1,4 +1,4 @@
-export type TodoStatus = "due" | "in-progress" | "done"
+export type TodoStatus = "due" | "in-progress" | "done" | "archived"
 export type ItemType = "todo" | "title" | "separator"
 export type Priority = "low" | "medium" | "high"
 export type AIProcessingStatus = "pending" | "processing" | "enhanced" | "failed"
@@ -37,6 +37,7 @@ export interface Item {
   // Metadata
   createdAt: string
   updatedAt?: string
+  completedAt?: string
 }
 
 // ============================================
@@ -75,6 +76,7 @@ export interface Todo {
   dueDate?: string
   category?: string
   createdAt: string
+  completedAt?: string
   aiProcessingStatus?: AIProcessingStatus
   groupTitleId?: string
   indent?: number
@@ -124,6 +126,7 @@ export function itemToTodo(item: Item, allItems?: Item[]): Todo | null {
     dueDate: item.dueDate,
     category: item.category,
     createdAt: item.createdAt,
+    completedAt: item.completedAt,
     aiProcessingStatus: item.aiProcessingStatus,
     indent: item.indent,
     isNow: item.isNow,
@@ -159,6 +162,7 @@ export function todoToItem(todo: Todo): Partial<Item> {
     category: todo.category,
     indent: todo.indent,
     isNow: todo.isNow,
+    completedAt: todo.completedAt,
     aiProcessingStatus: todo.aiProcessingStatus,
   }
 }

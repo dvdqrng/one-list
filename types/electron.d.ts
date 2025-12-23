@@ -93,9 +93,12 @@ export interface ElectronAPI {
   checkForUpdates?: () => Promise<any>;
   downloadUpdate?: () => Promise<any>;
   installUpdate?: () => void;
-  onUpdateAvailable?: (callback: (info: UpdateInfo) => void) => void;
-  onDownloadProgress?: (callback: (progress: DownloadProgress) => void) => void;
-  onUpdateDownloaded?: (callback: (info: UpdateInfo) => void) => void;
+  onUpdateAvailable?: (callback: (info: UpdateInfo) => void) => (() => void);
+  onCheckingForUpdate?: (callback: () => void) => (() => void);
+  onUpdateNotAvailable?: (callback: (info: UpdateInfo) => void) => (() => void);
+  onDownloadProgress?: (callback: (progress: DownloadProgress) => void) => (() => void);
+  onUpdateDownloaded?: (callback: (info: UpdateInfo) => void) => (() => void);
+  onUpdateError?: (callback: (error: string) => void) => (() => void);
 
   // Focus Timer
   startFocusTimer: (duration?: number) => Promise<{ success: boolean; timeRemaining: number }>;
@@ -114,4 +117,4 @@ declare global {
   }
 }
 
-export {};
+export { };

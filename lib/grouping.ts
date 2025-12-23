@@ -435,21 +435,24 @@ export function groupItems(
   groupBy: GroupBy,
   options: GroupingOptions = {}
 ): ItemGroup[] {
+  // Always filter out archived items from all standard views
+  const activeItems = items.filter(item => !(isTodo(item) && item.status === "archived"))
+
   switch (groupBy) {
     case "position":
-      return groupByPosition(items, options)
+      return groupByPosition(activeItems, options)
     case "dueDate":
-      return groupByDueDate(items, options)
+      return groupByDueDate(activeItems, options)
     case "priority":
-      return groupByPriority(items, options)
+      return groupByPriority(activeItems, options)
     case "status":
-      return groupByStatus(items, options)
+      return groupByStatus(activeItems, options)
     case "category":
-      return groupByCategory(items, options)
+      return groupByCategory(activeItems, options)
     case "project":
-      return groupByProject(items, options)
+      return groupByProject(activeItems, options)
     default:
-      return groupByPosition(items, options)
+      return groupByPosition(activeItems, options)
   }
 }
 

@@ -71,13 +71,34 @@ const electronAPI = {
     return ipcRenderer.invoke('install-update');
   },
   onUpdateAvailable: (callback) => {
-    ipcRenderer.on('update-available', (_, info) => callback(info));
+    const listener = (_, info) => callback(info);
+    ipcRenderer.on('update-available', listener);
+    return () => ipcRenderer.removeListener('update-available', listener);
+  },
+  onCheckingForUpdate: (callback) => {
+    const listener = () => callback();
+    ipcRenderer.on('checking-for-update', listener);
+    return () => ipcRenderer.removeListener('checking-for-update', listener);
+  },
+  onUpdateNotAvailable: (callback) => {
+    const listener = (_, info) => callback(info);
+    ipcRenderer.on('update-not-available', listener);
+    return () => ipcRenderer.removeListener('update-not-available', listener);
   },
   onDownloadProgress: (callback) => {
-    ipcRenderer.on('download-progress', (_, progress) => callback(progress));
+    const listener = (_, progress) => callback(progress);
+    ipcRenderer.on('download-progress', listener);
+    return () => ipcRenderer.removeListener('download-progress', listener);
   },
   onUpdateDownloaded: (callback) => {
-    ipcRenderer.on('update-downloaded', (_, info) => callback(info));
+    const listener = (_, info) => callback(info);
+    ipcRenderer.on('update-downloaded', listener);
+    return () => ipcRenderer.removeListener('update-downloaded', listener);
+  },
+  onUpdateError: (callback) => {
+    const listener = (_, error) => callback(error);
+    ipcRenderer.on('update-error', listener);
+    return () => ipcRenderer.removeListener('update-error', listener);
   },
 
   // Focus Timer
