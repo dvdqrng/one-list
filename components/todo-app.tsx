@@ -27,6 +27,7 @@ import { aiQueueManager } from "@/lib/ai"
 import { useStore, useTodos, useSelectedTodo, useSelectedTitle } from "@/lib/store"
 import { useFocusTimer } from "@/hooks/use-focus-timer"
 import { getDateForCategory, type DueDateCategory } from "@/lib/format"
+import { isTodo } from "@/lib/types"
 import type { Todo, ProposedChange } from "@/lib/types"
 import type { SimilarTaskGroup } from "@/lib/find-similar-tasks"
 
@@ -104,6 +105,35 @@ export function TodoApp() {
       updateItemDebounced(todoId, updates)
     })
   }, [updateItemDebounced])
+
+  // Automated AI enrichment for new items
+  const activeItemId = useStore((state) => state.activeItemId)
+  useEffect(() => {
+    // Find todos that need enrichment:
+    // 1. Must be a todo item
+    // 2. Must have a title (not empty)
+    // 3. Must not have any AI processing status yet (unprocessed)
+    // 4. Optimization: Don't process the currently active item to avoid 
+    //    interfering while the user is still typing.
+    const todosNeedingEnrichment = items.filter(
+      (item) =>
+        isTodo(item) &&
+        item.title &&
+        item.title.trim().length > 0 &&
+        item.aiProcessingStatus === undefined &&
+        item.id !== activeItemId
+    )
+
+    if (todosNeedingEnrichment.length > 0) {
+      todosNeedingEnrichment.forEach((item) => {
+        aiQueueManager.enqueue({
+          todoId: item.id,
+          inputText: item.title || "",
+          type: "enhance",
+        })
+      })
+    }
+  }, [items, activeItemId])
 
   // Handlers that wrap store actions with additional logic
 

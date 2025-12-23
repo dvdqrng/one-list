@@ -53,7 +53,11 @@
       "Bash(pnpm patch-commit:*)",
       "Bash(pnpm why:*)",
       "Bash(git tag:*)",
-      "Bash(git checkout:*)"
+      "Bash(git checkout:*)",
+      "Bash(gh pr create --title \"refactor: unify focus and selection system\" --body \"$(cat <<''EOF''\n## Summary\n\n- Replaces dual `selectedTodoId` + `selectedTitleId` with unified `activeItemId` in store\n- Adds `pendingFocusId` to store for managing focus requests (replaces focus-target.ts singleton)\n- Arrow key navigation now updates both focus AND selection (sidebar stays in sync)\n- Removes race conditions from focus-target singleton pattern\n\n## Changes\n\n- **Store**: New unified selection/focus state with `activeItemId` and `pendingFocusId`\n- **New hooks**: `useActiveItem()` returns `{ todo, title }`\n- **Deprecated**: `useSelectedTodo()` and `useSelectedTitle()` (still work via wrapper)\n- **Deleted**: `lib/focus-target.ts` (no longer needed)\n- **Updated**: TodoTextEditor, TaskItem, TodoSidebar, TodoKanbanView\n\n## Test plan\n\n- [ ] Create new task - should auto-focus and show in sidebar\n- [ ] Navigate with arrow keys - sidebar should update to show focused task\n- [ ] Click task - should select and show in sidebar\n- [ ] Switch between kanban/list views - selection should persist\n- [ ] Edit task details in sidebar - should save correctly\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\nEOF\n)\")",
+      "Bash(git merge refactor/unified-focus-selection --no-ff -m \"$(cat <<''EOF''\nMerge branch ''refactor/unified-focus-selection''\n\nrefactor: unify focus and selection into single activeItemId system\n\n- Replace selectedTodoId + selectedTitleId with unified activeItemId\n- Add pendingFocusId to manage focus requests (replaces singleton)\n- Arrow keys now update both focus AND selection\n- Remove focus-target.ts singleton\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\nEOF\n)\")",
+      "Bash(git stash:*)",
+      "Bash(ls:*)"
     ],
     "deny": [],
     "ask": []
