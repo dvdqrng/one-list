@@ -33,7 +33,7 @@ A sophisticated cross-platform todo application built with **Next.js 16 + Electr
 ## 📁 Project Structure
 
 ```
-v0-intelligent-todo-app/
+one-list/
 ├── app/                          # Next.js App Router directory
 │   ├── api/                      # API routes (server-side)
 │   │   ├── process-todo-text/    # AI text processing for todos

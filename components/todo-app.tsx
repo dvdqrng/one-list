@@ -447,7 +447,7 @@ export function TodoApp() {
                   )}
                   <span>Find Similar Tasks</span>
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => window.open('https://github.com/dvdqrng/v0-intelligent-todo-app', '_blank')} className="gap-2 cursor-pointer">
+                <DropdownMenuItem onClick={() => window.open('https://github.com/dvdqrng/one-list', '_blank')} className="gap-2 cursor-pointer">
                   <LightningIcon className="h-4 w-4" />
                   <span>GitHub Repository</span>
                 </DropdownMenuItem>

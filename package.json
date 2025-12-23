@@ -1,6 +1,6 @@
 {
-  "name": "notes-list",
-  "version": "0.2.9",
+  "name": "one-list",
+  "version": "0.2.11",
   "private": true,
   "main": "electron/main.js",
   "packageManager": "pnpm@10.20.0",
@@ -66,7 +66,7 @@
     "publish": {
       "provider": "github",
       "owner": "dvdqrng",
-      "repo": "v0-intelligent-todo-app"
+      "repo": "one-list"
     }
   },
   "dependencies": {

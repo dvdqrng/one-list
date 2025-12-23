@@ -81,7 +81,7 @@ A GitHub Actions workflow has been set up to automatically build and publish rel
 
 4. **Users can download from:**
    ```
-   https://github.com/dvdqrng/v0-intelligent-todo-app/releases
+   https://github.com/dvdqrng/one-list/releases
    ```
 
 ### 2. Direct Distribution
