@@ -408,17 +408,18 @@ function groupByProject(items: Item[], options: GroupingOptions): ItemGroup[] {
     })
   }
 
-  // Add no-project group if has items
-  if (noProjectTodos.length > 0) {
-    const isCollapsed = collapsedGroups?.has("no-project") ?? false
-    groups.push({
-      key: "no-project",
-      label: "No Project",
-      items: isCollapsed ? [] : noProjectTodos,
-      totalCount: noProjectTodos.length,
-      metadata: { isCollapsible: true }
-    })
-  }
+  // Always include a no-project group so users have a drop target for ungrouped tasks
+  const noProjectCollapsed = collapsedGroups?.has("no-project") ?? false
+  groups.push({
+    key: "no-project",
+    label: "No Project",
+    items: noProjectCollapsed ? [] : noProjectTodos,
+    totalCount: noProjectTodos.length,
+    metadata: {
+      isCollapsible: true,
+      showEmpty: true
+    }
+  })
 
   return groups
 }
