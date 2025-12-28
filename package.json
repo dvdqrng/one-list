@@ -132,6 +132,7 @@
     "tailwindcss-animate": "^1.0.7",
     "tunnel-rat": "^0.1.2",
     "vaul": "^0.9.9",
+    "vibe-kanban-web-companion": "^0.0.5",
     "zod": "3.25.76",
     "zustand": "^5.0.9"
   },
