@@ -81,7 +81,10 @@ export function TodoKanbanView({
   onAddTodo,
 }: TodoKanbanViewProps) {
   // Use centralized grouping
-  const groups = useGroupedItems(items, groupBy as GroupBy, { hideCompleted: !showCompleted })
+  const groups = useGroupedItems(items, groupBy as GroupBy, {
+    hideCompleted: !showCompleted,
+    excludeProjectRoots: groupBy !== "project",
+  })
 
   // Build columns from groups
   const columns = useMemo((): KanbanColumn<Todo>[] => {

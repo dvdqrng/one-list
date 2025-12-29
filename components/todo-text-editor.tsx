@@ -9,7 +9,6 @@ import {
   useSensor,
   useSensors,
   DragEndEvent,
-  useDroppable,
 } from "@dnd-kit/core"
 import {
   arrayMove,
@@ -20,6 +19,7 @@ import {
 import { SortableItem } from "@/components/sortable-item"
 import { DraggableItem } from "@/components/draggable-item"
 import { TaskItem } from "@/components/ui/task-item"
+import { DueDateHeader } from "@/components/ui/collapsible-header"
 import { useGroupedItems, getItemIdsFromGroups } from "@/lib/grouping"
 import { useFocusManager, type KeyboardActions } from "@/hooks/use-focus-manager"
 import { getDateForCategory, type DueDateCategory } from "@/lib/format"
@@ -27,7 +27,6 @@ import { sortItemsByPosition, isTodo, isSeparator } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import { useStore } from "@/lib/store"
 import type { Item, Todo } from "@/lib/types"
-import { CaretDownIcon, CaretRightIcon, PlayIcon } from "@phosphor-icons/react"
 
 type ListEntry =
   | { kind: "header"; key: string; label: string; isFirst: boolean; isNow: boolean }
@@ -432,9 +431,10 @@ export function TodoTextEditor({ onStartFocus }: TodoTextEditorProps) {
 
   const renderGroupedView = () => {
     let projectGroupIndex = 0
+    const renderedDueDateItems = new Set<string>()
 
     return (
-      <div className={groupByDueDate ? "space-y-4" : "space-y-0 relative"}>
+      <div className="space-y-0 relative">
         <SortableContext items={sortableIds} strategy={verticalListSortingStrategy}>
           {listEntries.map((entry) => {
             if (entry.kind === "header") {
@@ -451,7 +451,10 @@ export function TodoTextEditor({ onStartFocus }: TodoTextEditorProps) {
 
             if (entry.kind === "placeholder") {
               return (
-                <div key={`placeholder-${entry.key}`} className="pl-3">
+                <div
+                  key={`placeholder-${entry.key}`}
+                  className="pl-4 pr-3"
+                >
                   {renderPlaceholder(entry.key)}
                 </div>
               )
@@ -488,13 +491,21 @@ export function TodoTextEditor({ onStartFocus }: TodoTextEditorProps) {
               const isFirstProjectHeader = isProjectHeader && projectGroupIndex === 0
 
               if (groupByDueDate) {
+                const categoryKey = entry.category || "uncategorized"
+                renderedDueDateItems.add(categoryKey)
+
                 return (
-                  <DraggableItem key={item.id} id={item.id} category={entry.category}>
-                    {renderTodo(item, {
-                      category: entry.category,
-                      indentLevel: item.indent ?? 0,
-                    })}
-                  </DraggableItem>
+                  <div
+                    key={`due-item-${item.id}`}
+                    className={cn("pl-4 pr-3", "mt-1")}
+                  >
+                    <DraggableItem id={item.id} category={entry.category}>
+                      {renderTodo(item, {
+                        category: entry.category,
+                        indentLevel: item.indent ?? 0,
+                      })}
+                    </DraggableItem>
+                  </div>
                 )
               }
 
@@ -549,45 +560,16 @@ interface DueDateGroupRowProps {
 }
 
 function DueDateGroupRow({ entry, isCollapsed, onToggle, onStartFocus }: DueDateGroupRowProps) {
-  const { setNodeRef, isOver } = useDroppable({
-    id: `drop-${entry.key}`,
-    data: { category: entry.key },
-    disabled: false,
-  })
-
   return (
-    <div
-      ref={setNodeRef}
-      className={cn(
-        "flex items-center gap-2 px-3 py-2 text-sm font-semibold text-muted-foreground",
-        !entry.isFirst && "mt-6",
-        isOver && "bg-muted/40 rounded-md"
-      )}
-    >
-      <button
-        type="button"
-        onClick={onToggle}
-        className="shrink-0 text-muted-foreground hover:opacity-80"
-      >
-        {isCollapsed ? (
-          <CaretRightIcon className="h-4 w-4" weight="bold" />
-        ) : (
-          <CaretDownIcon className="h-4 w-4" weight="bold" />
-        )}
-      </button>
-      <span className={cn("text-base", entry.isNow && "text-primary")}>{entry.label}</span>
-      <div className="ml-auto flex items-center gap-2">
-        {entry.isNow && onStartFocus && (
-          <button
-            type="button"
-            onClick={onStartFocus}
-            className="flex items-center gap-1 rounded-full border px-2 py-1 text-xs"
-          >
-            <PlayIcon className="h-3 w-3" weight="fill" />
-            Focus
-          </button>
-        )}
-      </div>
-    </div>
+    <DueDateHeader
+      category={entry.key}
+      label={entry.label}
+      isCollapsed={isCollapsed}
+      onToggle={onToggle}
+      isFirst={entry.isFirst}
+      onStartFocus={entry.isNow ? onStartFocus : undefined}
+      className={cn(!entry.isFirst && "mt-6")}
+      labelClassName="text-sm"
+    />
   )
 }

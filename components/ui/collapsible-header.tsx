@@ -1,7 +1,7 @@
 "use client"
 
 import type { ReactNode } from "react"
-import { CaretDownIcon, CaretRightIcon, PlayIcon } from "@phosphor-icons/react"
+import { CaretDownIcon, CaretRightIcon } from "@phosphor-icons/react"
 import { useDroppable } from "@dnd-kit/core"
 import { cn } from "@/lib/utils"
 
@@ -17,6 +17,7 @@ interface CollapsibleHeaderProps {
   droppable?: boolean
   droppableData?: Record<string, unknown>
   className?: string
+  labelClassName?: string
 }
 
 export function CollapsibleHeader({
@@ -31,6 +32,7 @@ export function CollapsibleHeader({
   droppable = false,
   droppableData,
   className,
+  labelClassName,
 }: CollapsibleHeaderProps) {
   const { setNodeRef, isOver } = useDroppable({
     id: droppable ? `drop-${id}` : id,
@@ -42,33 +44,39 @@ export function CollapsibleHeader({
     <div
       ref={droppable ? setNodeRef : undefined}
       className={cn(
-        "group flex items-center gap-2 rounded-md px-3 py-2 transition-opacity cursor-pointer",
+        "group flex items-center gap-3 rounded-md px-3 py-2 transition-opacity cursor-pointer",
         !isFirst && "mt-4",
-        droppable && isOver && "text-primary opacity-90",
-        className
+        className,
+        droppable && isOver && "text-primary opacity-90 bg-muted/40"
       )}
       onClick={onToggle}
     >
-      <button
-        type="button"
-        className="shrink-0 text-muted-foreground transition-opacity outline-none hover:opacity-70"
-      >
-        {isCollapsed ? (
-          <CaretRightIcon className="h-4 w-4" weight="bold" />
-        ) : (
-          <CaretDownIcon className="h-4 w-4" weight="bold" />
+      <div className="flex items-center gap-1">
+        <button
+          type="button"
+          className="shrink-0 text-muted-foreground transition-opacity outline-none hover:opacity-70"
+        >
+          {isCollapsed ? (
+            <CaretRightIcon className="h-4 w-4" weight="bold" />
+          ) : (
+            <CaretDownIcon className="h-4 w-4" weight="bold" />
+          )}
+        </button>
+        <span
+          className={cn(
+            "font-semibold",
+            highlighted && "text-primary",
+            labelClassName ?? "text-lg"
+          )}
+        >
+          {label}
+        </span>
+        {actionButton && (
+          <div onClick={(e) => e.stopPropagation()}>{actionButton}</div>
         )}
-      </button>
-      <span className={cn("text-lg font-semibold", highlighted && "text-primary")}>
-        {label}
-      </span>
+      </div>
       {itemCount !== undefined && itemCount > 0 && (
-        <span className="text-sm text-muted-foreground ml-1">({itemCount})</span>
-      )}
-      {actionButton && (
-        <div className="ml-auto" onClick={(e) => e.stopPropagation()}>
-          {actionButton}
-        </div>
+        <span className="text-sm text-muted-foreground">({itemCount})</span>
       )}
     </div>
   )
@@ -83,6 +91,9 @@ interface DueDateHeaderProps {
   isFirst?: boolean
   itemCount?: number
   onStartFocus?: () => void
+  className?: string
+  droppable?: boolean
+  labelClassName?: string
 }
 
 export function DueDateHeader({
@@ -93,6 +104,9 @@ export function DueDateHeader({
   isFirst = false,
   itemCount,
   onStartFocus,
+  className,
+  droppable = true,
+  labelClassName,
 }: DueDateHeaderProps) {
   const isNowCategory = category === "now"
 
@@ -104,18 +118,20 @@ export function DueDateHeader({
       onToggle={onToggle}
       isFirst={isFirst}
       itemCount={itemCount}
-      highlighted={isNowCategory}
-      droppable
-      droppableData={{ category }}
+      highlighted={false}
+      droppable={droppable}
+      droppableData={droppable ? { category } : undefined}
+      className={className}
+      labelClassName={labelClassName}
       actionButton={
         isNowCategory && onStartFocus ? (
           <button
             type="button"
             onClick={onStartFocus}
-            className="p-1.5 rounded-full bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+            className="text-sm font-medium text-foreground transition-opacity hover:opacity-70 active:opacity-60"
             title="Start focus session"
           >
-            <PlayIcon className="h-3 w-3" weight="fill" />
+            Focus
           </button>
         ) : undefined
       }

@@ -42,6 +42,43 @@ export interface GroupingOptions {
   collapsedGroups?: Set<string>
   /** For position grouping: set of collapsed title IDs (deprecated but kept for compat) */
   collapsedTitles?: Set<string>
+  /**
+   * When true, exclude root-level todos that currently have subtasks.
+   * Used to prevent project cards from appearing in views like kanban or due-date groups.
+   */
+  excludeProjectRoots?: boolean
+}
+
+interface StackEntry {
+  id: string
+  indent: number
+}
+
+function findProjectRootIds(items: Item[]): Set<string> {
+  const sorted = sortItemsByPosition(items)
+  const stack: StackEntry[] = []
+  const rootIds = new Set<string>()
+
+  for (const item of sorted) {
+    if (!isTodo(item)) continue
+
+    const indent = item.indent || 0
+
+    while (stack.length > 0 && stack[stack.length - 1].indent >= indent) {
+      stack.pop()
+    }
+
+    if (indent > 0 && stack.length > 0) {
+      const rootEntry = stack.find((entry) => entry.indent === 0)
+      if (rootEntry) {
+        rootIds.add(rootEntry.id)
+      }
+    }
+
+    stack.push({ id: item.id, indent })
+  }
+
+  return rootIds
 }
 
 // ============================================
@@ -275,6 +312,15 @@ function groupByProject(items: Item[], options: GroupingOptions): ItemGroup[] {
 
     const totalCount = currentItems.length
 
+    if (totalCount === 0) {
+      if (shouldInclude(currentRoot)) {
+        ungrouped.push(currentRoot)
+      }
+      currentRoot = null
+      currentItems = []
+      return
+    }
+
     groups.push({
       key: currentRoot.id,
       label: currentRoot.title || "Untitled Project",
@@ -298,8 +344,13 @@ function groupByProject(items: Item[], options: GroupingOptions): ItemGroup[] {
 
     if (indent === 0) {
       if (currentRoot) flushCurrentGroup()
-      currentRoot = item
-      currentItems = []
+      if (shouldInclude(item)) {
+        currentRoot = item
+        currentItems = []
+      } else {
+        currentRoot = null
+        currentItems = []
+      }
     } else if (currentRoot) {
       if (shouldInclude(item)) currentItems.push(item)
     } else {
@@ -333,14 +384,20 @@ export function groupItems(
 ): ItemGroup[] {
   const activeItems = items.filter(item => !(isTodo(item) && item.status === "archived"))
 
+  const shouldExcludeProjectRoots = Boolean(options.excludeProjectRoots && groupBy !== "project")
+  const projectRootIds = shouldExcludeProjectRoots ? findProjectRootIds(activeItems) : null
+  const filteredItems = shouldExcludeProjectRoots && projectRootIds
+    ? activeItems.filter(item => !projectRootIds.has(item.id))
+    : activeItems
+
   switch (groupBy) {
-    case "position": return groupByPosition(activeItems, options)
-    case "dueDate": return groupByDueDate(activeItems, options)
-    case "priority": return groupByPriority(activeItems, options)
-    case "status": return groupByStatus(activeItems, options)
-    case "category": return groupByCategory(activeItems, options)
+    case "position": return groupByPosition(filteredItems, options)
+    case "dueDate": return groupByDueDate(filteredItems, options)
+    case "priority": return groupByPriority(filteredItems, options)
+    case "status": return groupByStatus(filteredItems, options)
+    case "category": return groupByCategory(filteredItems, options)
     case "project": return groupByProject(activeItems, options) // Logic updated to root tasks
-    default: return groupByPosition(activeItems, options)
+    default: return groupByPosition(filteredItems, options)
   }
 }
 
@@ -351,7 +408,14 @@ export function useGroupedItems(
 ): ItemGroup[] {
   return useMemo(
     () => groupItems(items, groupBy, options),
-    [items, groupBy, options.hideCompleted, options.collapsedGroups, options.collapsedTitles]
+    [
+      items,
+      groupBy,
+      options.hideCompleted,
+      options.collapsedGroups,
+      options.collapsedTitles,
+      options.excludeProjectRoots,
+    ]
   )
 }
 
