@@ -1,6 +1,6 @@
 {
   "name": "one-list",
-  "version": "0.2.11",
+  "version": "0.2.13",
   "private": true,
   "main": "electron/main.js",
   "packageManager": "pnpm@10.20.0",
