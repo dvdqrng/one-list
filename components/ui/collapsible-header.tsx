@@ -42,21 +42,21 @@ export function CollapsibleHeader({
     <div
       ref={droppable ? setNodeRef : undefined}
       className={cn(
-        "group flex items-center gap-1 rounded-md border px-3 py-2 transition-colors cursor-pointer",
+        "group flex items-center gap-2 rounded-md px-3 py-2 transition-opacity cursor-pointer",
         !isFirst && "mt-4",
-        droppable && isOver ? "border-primary bg-primary/10" : "border-transparent",
+        droppable && isOver && "text-primary opacity-90",
         className
       )}
       onClick={onToggle}
     >
       <button
         type="button"
-        className="p-0.5 rounded shrink-0"
+        className="shrink-0 text-muted-foreground transition-opacity outline-none hover:opacity-70"
       >
         {isCollapsed ? (
-          <CaretRightIcon className="h-4 w-4 text-muted-foreground" weight="bold" />
+          <CaretRightIcon className="h-4 w-4" weight="bold" />
         ) : (
-          <CaretDownIcon className="h-4 w-4 text-muted-foreground" weight="bold" />
+          <CaretDownIcon className="h-4 w-4" weight="bold" />
         )}
       </button>
       <span className={cn("text-lg font-semibold", highlighted && "text-primary")}>

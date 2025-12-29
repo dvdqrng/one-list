@@ -2,12 +2,11 @@
  * Centralized Grouping Engine
  *
  * Single source of truth for grouping items across all views.
- * Both list and kanban views consume the same ItemGroup[] structure.
  */
 
 import { useMemo } from "react"
 import type { Item } from "./types"
-import { isTodo, isTitle, isSeparator, sortItemsByPosition } from "./types"
+import { isTodo, isSeparator, sortItemsByPosition } from "./types"
 import {
   getDueDateCategory,
   DUE_DATE_GROUP_ORDER,
@@ -19,21 +18,19 @@ import {
 // Types
 // ============================================
 
-export type GroupBy = "position" | "dueDate" | "priority" | "category" | "project" | "status"
+export type GroupBy = "position" | "dueDate" | "priority" | "category" | "status" | "project"
 
 export interface ItemGroup {
   key: string
   label: string
   items: Item[]
-  /** Original items count (before filtering) - useful for showing counts when collapsed */
+  /** Original items count */
   totalCount?: number
   /** Group metadata for styling/behavior */
   metadata?: {
     color?: string
     isCollapsible?: boolean
     showEmpty?: boolean
-    /** For position groups: the title item if this is a project group */
-    titleItem?: Item
   }
 }
 
@@ -42,12 +39,12 @@ export interface GroupingOptions {
   hideCompleted?: boolean
   /** Set of collapsed group keys */
   collapsedGroups?: Set<string>
-  /** For position grouping: set of collapsed title IDs */
+  /** For position grouping: set of collapsed title IDs (deprecated but kept for compat) */
   collapsedTitles?: Set<string>
 }
 
 // ============================================
-// Priority Config
+// Priority/Status Config
 // ============================================
 
 const PRIORITY_ORDER = ["high", "medium", "low", "none"] as const
@@ -64,10 +61,6 @@ const PRIORITY_COLORS: Record<string, string> = {
   none: "#6b7280",
 }
 
-// ============================================
-// Status Config
-// ============================================
-
 const STATUS_ORDER = ["due", "in-progress", "done"] as const
 const STATUS_LABELS: Record<string, string> = {
   due: "To Do",
@@ -81,96 +74,24 @@ const STATUS_LABELS: Record<string, string> = {
 
 /**
  * Group items by position (default list view)
- * Returns items in order, with title items creating sub-groups
+ * Now returns a single flat group (hierarchy handled by render indentation)
  */
 function groupByPosition(items: Item[], options: GroupingOptions): ItemGroup[] {
   const sorted = sortItemsByPosition(items)
-  const { hideCompleted, collapsedTitles } = options
+  const { hideCompleted } = options
 
-  // Filter completed if needed
   const filtered = hideCompleted
     ? sorted.filter(item => !(isTodo(item) && item.completed))
     : sorted
 
-  // For position-based view, we return a single group with all items
-  // The view component handles rendering titles/todos/separators differently
-  // But we also create sub-groups for titles to support collapsing
-
-  const groups: ItemGroup[] = []
-  let currentGroup: ItemGroup | null = null
-  let standaloneItems: Item[] = []
-
-  for (const item of filtered) {
-    if (isTitle(item)) {
-      // Flush standalone items as "ungrouped" if any
-      if (standaloneItems.length > 0) {
-        groups.push({
-          key: "ungrouped-" + groups.length,
-          label: "",
-          items: standaloneItems,
-          metadata: { isCollapsible: false }
-        })
-        standaloneItems = []
-      }
-
-      // Start a new title group
-      const isCollapsed = collapsedTitles?.has(item.id) ?? false
-      currentGroup = {
-        key: `title-${item.id}`,
-        label: item.text || "",
-        items: isCollapsed ? [] : [],
-        totalCount: 0,
-        metadata: {
-          isCollapsible: true,
-          titleItem: item
-        }
-      }
-      // Always include the title itself so it renders
-      if (!isCollapsed) {
-        currentGroup.items.push(item)
-      } else {
-        // Even when collapsed, we need to track the title
-        currentGroup.items = [item]
-      }
-      groups.push(currentGroup)
-    } else if (isSeparator(item)) {
-      // Separators end the current group
-      if (currentGroup) {
-        currentGroup = null
-      }
-      // Add separator as its own group
-      groups.push({
-        key: `separator-${item.id}`,
-        label: "",
-        items: [item],
-        metadata: { isCollapsible: false }
-      })
-    } else if (isTodo(item)) {
-      if (currentGroup && !collapsedTitles?.has(currentGroup.metadata?.titleItem?.id ?? "")) {
-        // Add to current title group
-        currentGroup.items.push(item)
-        currentGroup.totalCount = (currentGroup.totalCount ?? 0) + 1
-      } else if (currentGroup) {
-        // Title is collapsed, just count
-        currentGroup.totalCount = (currentGroup.totalCount ?? 0) + 1
-      } else {
-        // Standalone todo (no title above)
-        standaloneItems.push(item)
-      }
-    }
-  }
-
-  // Flush remaining standalone items
-  if (standaloneItems.length > 0) {
-    groups.push({
-      key: "ungrouped-final",
-      label: "",
-      items: standaloneItems,
-      metadata: { isCollapsible: false }
-    })
-  }
-
-  return groups
+  // Return single group
+  return [{
+    key: "all",
+    label: "",
+    items: filtered,
+    totalCount: filtered.length,
+    metadata: { isCollapsible: false }
+  }]
 }
 
 /**
@@ -179,13 +100,11 @@ function groupByPosition(items: Item[], options: GroupingOptions): ItemGroup[] {
 function groupByDueDate(items: Item[], options: GroupingOptions): ItemGroup[] {
   const { hideCompleted, collapsedGroups } = options
 
-  // Only group todos
   const todos = items.filter(isTodo)
   const filtered = hideCompleted
     ? todos.filter(item => !item.completed)
     : todos
 
-  // Initialize groups for each category
   const groupMap: Record<DueDateCategory, Item[]> = {
     "now": [],
     "overdue": [],
@@ -196,13 +115,11 @@ function groupByDueDate(items: Item[], options: GroupingOptions): ItemGroup[] {
     "no-date": [],
   }
 
-  // Categorize each todo
   for (const todo of filtered) {
     const category = getDueDateCategory(todo.dueDate, todo.isNow)
     groupMap[category].push(todo)
   }
 
-  // Build groups in order
   const alwaysShow: DueDateCategory[] = ["now", "today", "tomorrow"]
 
   return DUE_DATE_GROUP_ORDER
@@ -233,12 +150,7 @@ function groupByPriority(items: Item[], options: GroupingOptions): ItemGroup[] {
     ? todos.filter(item => !item.completed)
     : todos
 
-  const groupMap: Record<string, Item[]> = {
-    high: [],
-    medium: [],
-    low: [],
-    none: [],
-  }
+  const groupMap: Record<string, Item[]> = { high: [], medium: [], low: [], none: [] }
 
   for (const todo of filtered) {
     const priority = todo.priority || "none"
@@ -271,18 +183,11 @@ function groupByStatus(items: Item[], options: GroupingOptions): ItemGroup[] {
     ? todos.filter(item => !item.completed)
     : todos
 
-  const groupMap: Record<string, Item[]> = {
-    "due": [],
-    "in-progress": [],
-    "done": [],
-  }
+  const groupMap: Record<string, Item[]> = { "due": [], "in-progress": [], "done": [] }
 
   for (const todo of filtered) {
-    // Derive status from completed flag if not set
     let status = todo.status
-    if (!status) {
-      status = todo.completed ? "done" : "due"
-    }
+    if (!status) status = todo.completed ? "done" : "due"
     groupMap[status].push(todo)
   }
 
@@ -299,7 +204,7 @@ function groupByStatus(items: Item[], options: GroupingOptions): ItemGroup[] {
 }
 
 /**
- * Group items by category (tag)
+ * Group items by category
  */
 function groupByCategory(items: Item[], options: GroupingOptions): ItemGroup[] {
   const { hideCompleted, collapsedGroups } = options
@@ -309,20 +214,14 @@ function groupByCategory(items: Item[], options: GroupingOptions): ItemGroup[] {
     ? todos.filter(item => !item.completed)
     : todos
 
-  // Collect unique categories
   const categorySet = new Set<string>()
   for (const todo of filtered) {
-    if (todo.category) {
-      categorySet.add(todo.category)
-    }
+    if (todo.category) categorySet.add(todo.category)
   }
   const categories = Array.from(categorySet).sort()
 
-  // Group by category
   const groupMap: Record<string, Item[]> = {}
-  for (const cat of categories) {
-    groupMap[cat] = []
-  }
+  for (const cat of categories) groupMap[cat] = []
   groupMap["uncategorized"] = []
 
   for (const todo of filtered) {
@@ -331,7 +230,6 @@ function groupByCategory(items: Item[], options: GroupingOptions): ItemGroup[] {
     groupMap[cat].push(todo)
   }
 
-  // Build groups: categories first, then uncategorized
   const groups: ItemGroup[] = categories.map(cat => {
     const isCollapsed = collapsedGroups?.has(cat) ?? false
     return {
@@ -343,7 +241,6 @@ function groupByCategory(items: Item[], options: GroupingOptions): ItemGroup[] {
     }
   })
 
-  // Add uncategorized if has items
   if (groupMap["uncategorized"].length > 0) {
     const isCollapsed = collapsedGroups?.has("uncategorized") ?? false
     groups.push({
@@ -359,111 +256,81 @@ function groupByCategory(items: Item[], options: GroupingOptions): ItemGroup[] {
 }
 
 /**
- * Group items by project (title)
+ * Group items by Root Project (Indent 0 items)
  */
 function groupByProject(items: Item[], options: GroupingOptions): ItemGroup[] {
   const { hideCompleted, collapsedGroups } = options
+  const sorted = sortItemsByPosition(items) // Ensure order
 
-  const sorted = sortItemsByPosition(items)
-
-  // Build project map: titleId -> { title, todos }
-  const projectMap = new Map<string, { title: Item; todos: Item[] }>()
-  const noProjectTodos: Item[] = []
-
-  let currentTitleId: string | null = null
-
-  for (const item of sorted) {
-    if (isTitle(item)) {
-      currentTitleId = item.id
-      projectMap.set(item.id, { title: item, todos: [] })
-    } else if (isSeparator(item)) {
-      currentTitleId = null
-    } else if (isTodo(item)) {
-      if (hideCompleted && item.completed) continue
-
-      if (currentTitleId && projectMap.has(currentTitleId)) {
-        projectMap.get(currentTitleId)!.todos.push(item)
-      } else {
-        noProjectTodos.push(item)
-      }
-    }
-  }
-
-  // Build groups
+  // Strategy: Find root items (indent 0). All subsequent items until next root item belong to it.
   const groups: ItemGroup[] = []
 
-  for (const [titleId, { title, todos }] of projectMap) {
-    if (todos.length === 0) continue
+  let currentRoot: Item | null = null
+  let currentItems: Item[] = []
 
-    const isCollapsed = collapsedGroups?.has(titleId) ?? false
-    groups.push({
-      key: titleId,
-      label: title.text || "Untitled Project",
-      items: isCollapsed ? [] : todos,
-      totalCount: todos.length,
-      metadata: {
-        isCollapsible: true,
-        titleItem: title
-      }
-    })
+  const flush = () => {
+    if (currentRoot) {
+      const isCollapsed = collapsedGroups?.has(currentRoot.id) ?? false
+      groups.push({
+        key: currentRoot.id,
+        label: currentRoot.title || "Untitled Project",
+        items: isCollapsed ? [] : currentItems,
+        totalCount: currentItems.length,
+        metadata: { isCollapsible: true }
+      })
+    } else if (currentItems.length > 0) {
+      // Orphaned items at start? Or simply non-indented items that are just tasks?
+      // User says: level 0 is just a task. But if grouping by project, implies task is a project.
+      // We will treat Level 0 tasks as the "Project" headers for this view.
+    }
   }
 
-  // Always include a no-project group so users have a drop target for ungrouped tasks
-  const noProjectCollapsed = collapsedGroups?.has("no-project") ?? false
-  groups.push({
-    key: "no-project",
-    label: "No Project",
-    items: noProjectCollapsed ? [] : noProjectTodos,
-    totalCount: noProjectTodos.length,
-    metadata: {
-      isCollapsible: true,
-      showEmpty: true
+  for (const item of sorted) {
+    if (!isTodo(item)) continue;
+
+    if ((item.indent || 0) === 0) {
+      // New root found
+      flush()
+      currentRoot = item
+      currentItems = [item] // Include the root item itself? Usually Kanban doesn't show the column header as card.
+      // If we want Kanban columns to be "Projects", the column is the project. Cards are children.
+      // So we reset currentItems to [] if we don't want root item in the column.
+      currentItems = []
+    } else {
+      // Child item
+      if (currentRoot) {
+        if (!hideCompleted || !item.completed) {
+          currentItems.push(item)
+        }
+      }
     }
-  })
+  }
+  flush()
 
   return groups
 }
 
-// ============================================
-// Main Grouping Function
-// ============================================
-
 /**
- * Group items by the specified strategy
+ * Main Grouping Function
  */
 export function groupItems(
   items: Item[],
   groupBy: GroupBy,
   options: GroupingOptions = {}
 ): ItemGroup[] {
-  // Always filter out archived items from all standard views
   const activeItems = items.filter(item => !(isTodo(item) && item.status === "archived"))
 
   switch (groupBy) {
-    case "position":
-      return groupByPosition(activeItems, options)
-    case "dueDate":
-      return groupByDueDate(activeItems, options)
-    case "priority":
-      return groupByPriority(activeItems, options)
-    case "status":
-      return groupByStatus(activeItems, options)
-    case "category":
-      return groupByCategory(activeItems, options)
-    case "project":
-      return groupByProject(activeItems, options)
-    default:
-      return groupByPosition(activeItems, options)
+    case "position": return groupByPosition(activeItems, options)
+    case "dueDate": return groupByDueDate(activeItems, options)
+    case "priority": return groupByPriority(activeItems, options)
+    case "status": return groupByStatus(activeItems, options)
+    case "category": return groupByCategory(activeItems, options)
+    case "project": return groupByProject(activeItems, options) // Logic updated to root tasks
+    default: return groupByPosition(activeItems, options)
   }
 }
 
-// ============================================
-// React Hook
-// ============================================
-
-/**
- * Hook for grouped items - memoized for performance
- */
 export function useGroupedItems(
   items: Item[],
   groupBy: GroupBy,
@@ -475,16 +342,11 @@ export function useGroupedItems(
   )
 }
 
-/**
- * Get flat list of item IDs from groups (for drag-and-drop)
- */
 export function getItemIdsFromGroups(groups: ItemGroup[]): string[] {
   const ids: string[] = []
   for (const group of groups) {
     for (const item of group.items) {
-      if (isTodo(item)) {
-        ids.push(item.id)
-      }
+      ids.push(item.id)
     }
   }
   return ids

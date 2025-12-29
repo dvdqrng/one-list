@@ -4,12 +4,15 @@ import { DotsSixVerticalIcon } from "@phosphor-icons/react"
 import { useSortable } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
 
+import { cn } from "@/lib/utils"
+
 interface SortableItemProps {
   id: string
   children: React.ReactNode
+  className?: string
 }
 
-export function SortableItem({ id, children }: SortableItemProps) {
+export function SortableItem({ id, children, className }: SortableItemProps) {
   const {
     attributes,
     listeners,
@@ -26,7 +29,7 @@ export function SortableItem({ id, children }: SortableItemProps) {
   }
 
   return (
-    <div ref={setNodeRef} style={style} className="group relative">
+    <div ref={setNodeRef} style={style} className={cn("group relative", className)}>
       <div
         {...attributes}
         {...listeners}

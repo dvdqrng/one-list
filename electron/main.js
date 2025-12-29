@@ -4,6 +4,8 @@ const fs = require('fs');
 const initSqlJs = require('sql.js');
 const { autoUpdater } = require('electron-updater');
 const OpenAI = require('openai');
+const defaultAgentPrompts = require('../data/agent-prompts.defaults.json');
+const defaultAgentConfig = require('../data/agent-config.defaults.json');
 
 // Load environment variables from .env.local (for production builds)
 function loadEnvFile() {
@@ -53,16 +55,20 @@ loadEnvFile();
 
 // OpenAI client - initialized lazily
 let openaiClient = null;
+let openaiClientKey = null;
 
 function getOpenAIClient() {
-  if (!openaiClient) {
-    const apiKey = process.env.OPENAI_API_KEY || process.env.NEXT_PUBLIC_OPENAI_API_KEY;
-    if (!apiKey) {
-      console.error('Available env vars:', Object.keys(process.env).filter(k => k.includes('OPENAI') || k.includes('API')));
-      throw new Error('OpenAI API key is not configured. Please add OPENAI_API_KEY to .env.local');
-    }
-    openaiClient = new OpenAI({ apiKey });
+  const apiKey = getStoredOpenAIApiKey();
+  if (!apiKey) {
+    console.error('Available env vars:', Object.keys(process.env).filter(k => k.includes('OPENAI') || k.includes('API')));
+    throw new Error('OpenAI API key is not configured. Set it in Agent Settings or .env.local');
   }
+
+  if (!openaiClient || openaiClientKey !== apiKey) {
+    openaiClient = new OpenAI({ apiKey });
+    openaiClientKey = apiKey;
+  }
+
   return openaiClient;
 }
 
@@ -401,6 +407,123 @@ function saveDatabase() {
   } catch (error) {
     console.error('Failed to save database:', error);
   }
+}
+
+// Agent prompts helpers
+let agentPromptsCache = null;
+let agentPromptsPath = null;
+
+function getAgentPromptsPath() {
+  if (!agentPromptsPath) {
+    const userDataPath = app.getPath('userData');
+    agentPromptsPath = path.join(userDataPath, 'agent-prompts.json');
+  }
+  return agentPromptsPath;
+}
+
+function normalizeAgentPrompts(overrides) {
+  const merged = { ...defaultAgentPrompts };
+  if (overrides && typeof overrides === 'object') {
+    for (const key of Object.keys(defaultAgentPrompts)) {
+      const value = overrides[key];
+      if (typeof value === 'string') {
+        const trimmed = value.trim();
+        merged[key] = trimmed.length > 0 ? trimmed : defaultAgentPrompts[key];
+      }
+    }
+  }
+  return merged;
+}
+
+function readAgentPromptsFromDisk() {
+  try {
+    const file = fs.readFileSync(getAgentPromptsPath(), 'utf8');
+    return JSON.parse(file);
+  } catch (error) {
+    if (error.code !== 'ENOENT') {
+      console.warn('Failed to read agent prompts file:', error);
+    }
+    return null;
+  }
+}
+
+function loadAgentPrompts() {
+  if (agentPromptsCache) {
+    return agentPromptsCache;
+  }
+  const stored = readAgentPromptsFromDisk();
+  agentPromptsCache = normalizeAgentPrompts(stored);
+  return agentPromptsCache;
+}
+
+function persistAgentPrompts(overrides) {
+  const nextPrompts = normalizeAgentPrompts(overrides);
+  agentPromptsCache = nextPrompts;
+  const filePath = getAgentPromptsPath();
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  fs.writeFileSync(filePath, JSON.stringify(nextPrompts, null, 2), 'utf8');
+  return nextPrompts;
+}
+
+// Agent config helpers
+let agentConfigCache = null;
+let agentConfigPath = null;
+
+function getAgentConfigPath() {
+  if (!agentConfigPath) {
+    const userDataPath = app.getPath('userData');
+    agentConfigPath = path.join(userDataPath, 'agent-config.json');
+  }
+  return agentConfigPath;
+}
+
+function normalizeAgentConfig(overrides) {
+  const merged = { ...defaultAgentConfig };
+  if (overrides && typeof overrides === 'object') {
+    if (typeof overrides.openaiApiKey === 'string') {
+      merged.openaiApiKey = overrides.openaiApiKey.trim();
+    }
+  }
+  return merged;
+}
+
+function readAgentConfigFromDisk() {
+  try {
+    const file = fs.readFileSync(getAgentConfigPath(), 'utf8');
+    return JSON.parse(file);
+  } catch (error) {
+    if (error.code !== 'ENOENT') {
+      console.warn('Failed to read agent config file:', error);
+    }
+    return null;
+  }
+}
+
+function loadAgentConfig() {
+  if (agentConfigCache) {
+    return agentConfigCache;
+  }
+  const stored = readAgentConfigFromDisk();
+  agentConfigCache = normalizeAgentConfig(stored);
+  return agentConfigCache;
+}
+
+function persistAgentConfig(overrides) {
+  const nextConfig = normalizeAgentConfig({ ...loadAgentConfig(), ...overrides });
+  agentConfigCache = nextConfig;
+  const filePath = getAgentConfigPath();
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  fs.writeFileSync(filePath, JSON.stringify(nextConfig, null, 2), 'utf8');
+  return nextConfig;
+}
+
+function getStoredOpenAIApiKey() {
+  const envKey = process.env.OPENAI_API_KEY || process.env.NEXT_PUBLIC_OPENAI_API_KEY;
+  if (envKey && envKey !== 'undefined') {
+    return envKey;
+  }
+  const config = loadAgentConfig();
+  return config.openaiApiKey || '';
 }
 
 // Migrate data from legacy tables (todos, titles, separators) to unified items table
@@ -1100,6 +1223,42 @@ ipcMain.handle('db:getMaxPosition', () => {
   }
 });
 
+ipcMain.handle('agentPrompts:get', () => {
+  try {
+    return loadAgentPrompts();
+  } catch (error) {
+    console.error('Failed to load agent prompts:', error);
+    return normalizeAgentPrompts(null);
+  }
+});
+
+ipcMain.handle('agentPrompts:update', (event, prompts) => {
+  try {
+    return persistAgentPrompts(prompts);
+  } catch (error) {
+    console.error('Failed to update agent prompts:', error);
+    throw error;
+  }
+});
+
+ipcMain.handle('agentConfig:get', () => {
+  try {
+    return loadAgentConfig();
+  } catch (error) {
+    console.error('Failed to load agent config:', error);
+    return normalizeAgentConfig(null);
+  }
+});
+
+ipcMain.handle('agentConfig:update', (event, config) => {
+  try {
+    return persistAgentConfig(config || {});
+  } catch (error) {
+    console.error('Failed to update agent config:', error);
+    throw error;
+  }
+});
+
 // Whisper transcription
 ipcMain.handle('transcribe:audio', async (event, audioBuffer) => {
   try {
@@ -1107,7 +1266,7 @@ ipcMain.handle('transcribe:audio', async (event, audioBuffer) => {
     const fetch = require('node-fetch');
     const FormData = require('form-data');
 
-    const apiKey = process.env.OPENAI_API_KEY || process.env.NEXT_PUBLIC_OPENAI_API_KEY;
+    const apiKey = getStoredOpenAIApiKey();
 
     if (!apiKey) {
       throw new Error('OpenAI API key not configured');

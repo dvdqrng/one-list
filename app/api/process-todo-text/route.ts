@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
-import { processTodoText } from "@/lib/ai"
+import { processTodoText } from "@/lib/ai/server"
+import { getOpenAIApiKey } from "@/lib/ai/agent-config"
 import type { Todo } from "@/lib/types"
 
 // Increase the max duration for longer AI processing
@@ -19,8 +20,9 @@ export async function POST(request: Request) {
       )
     }
 
-    // Check if API key is configured
-    if (!process.env.OPENAI_API_KEY && !process.env.NEXT_PUBLIC_OPENAI_API_KEY) {
+    const apiKey = await getOpenAIApiKey()
+
+    if (!apiKey) {
       return NextResponse.json(
         { error: "OpenAI API key is not configured" },
         { status: 500 }

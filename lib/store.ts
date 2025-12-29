@@ -12,8 +12,8 @@ import { create } from "zustand"
 import { persist } from "zustand/middleware"
 import { useMemo } from "react"
 import { itemsDB } from "@/lib/electron/database"
-import type { Item, Todo, Title, ChangelogSession, ProposedChange, ViewMode, KanbanGroupBy, ListGroupBy } from "@/lib/types"
-import { sortItemsByPosition, isTodo, isTitle, isSeparator, itemToTodo, itemToTitle } from "@/lib/types"
+import type { Item, Todo, ChangelogSession, ProposedChange, ViewMode, KanbanGroupBy, ListGroupBy } from "@/lib/types"
+import { sortItemsByPosition, isTodo, itemToTodo } from "@/lib/types"
 
 // ============================================
 // Store Types
@@ -26,8 +26,6 @@ interface AppState {
   error: string | null
 
   // Unified selection & focus
-  // activeItemId: The item shown in sidebar (todo or title)
-  // pendingFocusId: Item that should receive DOM focus on next render (then auto-clears)
   activeItemId: string | null
   pendingFocusId: string | null
 
@@ -95,7 +93,7 @@ interface AppActions {
 
   // Utility
   getNextPosition: () => number
-  insertItemAfter: (afterId: string | null, type: "todo" | "title" | "separator", initialData?: Partial<Item>) => string
+  insertItemAfter: (afterId: string | null, initialData?: Partial<Item>) => string
   moveToProject: (todoId: string, projectId: string | null) => Promise<void>
 }
 
@@ -234,7 +232,7 @@ export const useStore = create<AppState & AppActions>()(
 
       toggleItem: async (id: string) => {
         const item = get().items.find((i) => i.id === id)
-        if (!item || !isTodo(item)) return
+        if (!item) return
 
         const newCompleted = !item.completed
         const now = new Date().toISOString()
@@ -307,23 +305,18 @@ export const useStore = create<AppState & AppActions>()(
       // Unified Selection & Focus
       // ============================================
 
-      // Set active item (for sidebar display) without changing focus
       setActiveItem: (id: string | null) => {
         set({ activeItemId: id })
       },
 
-      // Set active item AND mark it for focus (common case: clicking an item)
       setActiveItemAndFocus: (id: string | null) => {
         set({ activeItemId: id, pendingFocusId: id })
       },
 
-      // Set pending focus without changing active item (rare: keyboard nav)
       setPendingFocus: (id: string | null) => {
         set({ pendingFocusId: id })
       },
 
-      // Claim pending focus - returns true if this id was pending, clears it
-      // Call this in useEffect to know if component should focus itself
       clearPendingFocus: (id: string): boolean => {
         if (get().pendingFocusId === id) {
           set({ pendingFocusId: null })
@@ -367,6 +360,7 @@ export const useStore = create<AppState & AppActions>()(
                   dueDate: change.newTodo.dueDate,
                   category: change.newTodo.category,
                   createdAt: change.newTodo.createdAt,
+                  indent: change.newTodo.indent || 0,
                 }
                 await addItem(newItem)
               }
@@ -403,6 +397,7 @@ export const useStore = create<AppState & AppActions>()(
                   dueDate: merged.dueDate,
                   category: merged.category,
                   createdAt: merged.createdAt,
+                  indent: 0,
                 }
                 await addItem(mergedItem)
               }
@@ -447,29 +442,28 @@ export const useStore = create<AppState & AppActions>()(
         return Math.max(...items.map((i) => i.position)) + 1
       },
 
-      insertItemAfter: (afterId: string | null, type: "todo" | "title" | "separator", initialData?: Partial<Item>) => {
-        const { items, addItem } = get()
+      insertItemAfter: (afterId: string | null, initialData?: Partial<Item>) => {
+        const { items, addItem, getNextPosition } = get()
         const id = crypto.randomUUID()
         const now = new Date().toISOString()
 
         let position: number
-        let parentId: string | undefined
+        let indent = 0
 
         if (afterId === null) {
-          position = 0
-          const updatedItems = items.map((item) => ({
-            ...item,
-            position: item.position + 1,
-          }))
-          set({ items: updatedItems })
-          itemsDB.updateItemPositions(updatedItems.map((i) => ({ id: i.id, position: i.position })))
+          // If inserting at the very end or start without reference
+          position = items.length > 0 ? getNextPosition() : 0
+          const lastItem = sortItemsByPosition(items).pop()
+          // Optionally reuse last item indent, but defaults to 0 suitable for "root"
+          if (lastItem) indent = lastItem.indent || 0
         } else {
+          // Insert after specific item
           const afterItem = items.find((i) => i.id === afterId)
           if (afterItem) {
             position = afterItem.position + 1
-            if (isTodo(afterItem)) {
-              parentId = afterItem.parentId
-            }
+            indent = afterItem.indent || 0
+
+            // Shift all subsequent items down
             const updatedItems = items.map((item) =>
               item.position >= position ? { ...item, position: item.position + 1 } : item
             )
@@ -480,18 +474,18 @@ export const useStore = create<AppState & AppActions>()(
                 .map((i) => ({ id: i.id, position: i.position }))
             )
           } else {
-            position = get().getNextPosition()
+            position = getNextPosition()
           }
         }
 
         const newItem: Item = {
           id,
-          type,
+          type: "todo",
           position,
-          parentId,
+          indent,
           createdAt: now,
-          ...(type === "todo" ? { completed: false, title: "" } : {}),
-          ...(type === "title" ? { text: "" } : {}),
+          title: "",
+          completed: false,
           ...initialData,
         }
 
@@ -499,38 +493,14 @@ export const useStore = create<AppState & AppActions>()(
         return id
       },
 
+      // Deprecated/Modified for hierarchy: Moves a task to be a child of another task
+      // or "project" in the new sense.
+      // For now, simple implementation updating parentId if we decide to use it,
+      // but primarily rely on reorder + indent for now.
       moveToProject: async (todoId: string, projectId: string | null) => {
-        const { items, updateItem, reorderItems } = get()
-        const todo = items.find((i) => i.id === todoId)
-        if (!todo || !isTodo(todo)) return
-
-        updateItem(todoId, { parentId: projectId || undefined })
-
-        if (projectId) {
-          const project = items.find((i) => i.id === projectId)
-          if (project) {
-            const sorted = sortItemsByPosition(items)
-            const projectIndex = sorted.findIndex((i) => i.id === projectId)
-
-            let insertIndex = projectIndex + 1
-            for (let i = projectIndex + 1; i < sorted.length; i++) {
-              const item = sorted[i]
-              if (isTitle(item) || isSeparator(item)) break
-              if (isTodo(item) && item.parentId === projectId) {
-                insertIndex = i + 1
-              }
-            }
-
-            const withoutTodo = sorted.filter((i) => i.id !== todoId)
-            withoutTodo.splice(
-              insertIndex > sorted.findIndex((i) => i.id === todoId) ? insertIndex - 1 : insertIndex,
-              0,
-              { ...todo, parentId: projectId }
-            )
-
-            await reorderItems(withoutTodo)
-          }
-        }
+        // Implementation pending specific drag-to-make-child logic
+        // For now, this is a placeholder or legacy cleaner
+        console.warn("moveToProject called but logic is now hierarchy-based")
       },
     }),
     {
@@ -555,60 +525,31 @@ export function useTodos(): Todo[] {
   return useMemo(() => {
     return items
       .filter((item) => isTodo(item) && item.status !== "archived")
-      .map((item) => itemToTodo(item, items))
+      .map((item) => itemToTodo(item))
       .filter((t): t is Todo => t !== null)
   }, [items])
 }
 
-export function useTitles(): Title[] {
-  const items = useStore((state) => state.items)
-  return useMemo(() => {
-    return items
-      .filter(isTitle)
-      .map(itemToTitle)
-      .filter((t): t is Title => t !== null)
-  }, [items])
-}
-
-export function useSortedItems(): Item[] {
-  const items = useStore((state) => state.items)
-  return useMemo(() => sortItemsByPosition(items), [items])
-}
-
-/**
- * Get the active item as a Todo (if it's a todo) or undefined
- */
-export function useActiveItem(): { todo: Todo | undefined; title: Title | undefined } {
+// Replaced useActiveItem to just return Todo
+export function useActiveItem(): Todo | undefined {
   const items = useStore((state) => state.items)
   const activeItemId = useStore((state) => state.activeItemId)
   return useMemo(() => {
-    if (!activeItemId) return { todo: undefined, title: undefined }
+    if (!activeItemId) return undefined
     const item = items.find((i) => i.id === activeItemId)
-    if (!item) return { todo: undefined, title: undefined }
-    if (isTodo(item)) {
-      return { todo: itemToTodo(item, items) ?? undefined, title: undefined }
-    }
-    if (isTitle(item)) {
-      return { todo: undefined, title: itemToTitle(item) ?? undefined }
-    }
-    return { todo: undefined, title: undefined }
+    if (!item || !isTodo(item)) return undefined
+    return itemToTodo(item) ?? undefined
   }, [items, activeItemId])
 }
 
-/**
- * @deprecated Use useActiveItem instead
- */
+// For compatibility if components import these
 export function useSelectedTodo(): Todo | undefined {
-  const { todo } = useActiveItem()
-  return todo
+  return useActiveItem()
 }
 
-/**
- * @deprecated Use useActiveItem instead
- */
-export function useSelectedTitle(): Title | undefined {
-  const { title } = useActiveItem()
-  return title
+export function useSelectedTitle(): any | undefined {
+  // Deprecated
+  return undefined
 }
 
 export function useCategories(): string[] {
@@ -627,7 +568,12 @@ export function useNowTodos(): Todo[] {
   return useMemo(() => {
     return items
       .filter((i) => isTodo(i) && i.isNow && i.status !== "archived")
-      .map((item) => itemToTodo(item, items))
+      .map((item) => itemToTodo(item))
       .filter((t): t is Todo => t !== null)
   }, [items])
+}
+
+export function useSortedItems(): Item[] {
+  const items = useStore((state) => state.items)
+  return useMemo(() => sortItemsByPosition(items), [items])
 }

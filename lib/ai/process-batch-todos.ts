@@ -1,14 +1,24 @@
 import { generateObject } from "ai"
 import { createOpenAI } from "@ai-sdk/openai"
 import { z } from "zod"
+import type { Priority } from "../types"
+import { DEFAULT_CATEGORY, DEFAULT_PRIORITY, normalizeCategory, normalizePriority } from "./defaults"
+import { getAgentPrompt } from "./agent-prompts"
+import { getOpenAIApiKey } from "./agent-config"
 
 const TodoItemSchema = z.object({
   originalIndex: z.number().describe("Index of the input that this corresponds to"),
   title: z.string().describe("A concise one-line task title (e.g., 'Buy milk', 'Call dentist', 'Finish report')"),
   details: z.string().optional().describe("All additional context, notes, and information about the task"),
-  priority: z.enum(["low", "medium", "high"]).optional().describe("Task priority level"),
+  priority: z
+    .enum(["low", "medium", "high"])
+    .default(DEFAULT_PRIORITY)
+    .describe("Task priority level"),
   dueDate: z.string().optional().describe("Due date in ISO format"),
-  category: z.string().optional().describe("Task category or tag"),
+  category: z
+    .string()
+    .default(DEFAULT_CATEGORY)
+    .describe("Task category or tag"),
 })
 
 const BatchProcessResultSchema = z.object({
@@ -23,9 +33,9 @@ export interface BatchTodoInput {
 export interface BatchTodoResult {
   title: string
   details?: string
-  priority?: "low" | "medium" | "high"
-  dueDate?: string
-  category?: string
+  priority: Priority
+  dueDate: string
+  category: string
 }
 
 export async function processBatchTodos(
@@ -37,34 +47,32 @@ export async function processBatchTodos(
 
   const todayDate = new Date().toISOString().split("T")[0]
 
-  try {
-    // Get API key from environment (prefer server-side key, fallback to public)
-    const apiKey = process.env.OPENAI_API_KEY || process.env.NEXT_PUBLIC_OPENAI_API_KEY
-
-    if (!apiKey || apiKey === 'undefined') {
-      throw new Error('OpenAI API key is not configured. Please add OPENAI_API_KEY to .env.local')
-    }
-
-    // Create OpenAI instance with API key
-    const openai = createOpenAI({
-      apiKey: apiKey,
+  const buildFallbackMap = () => {
+    const fallbackMap = new Map<number, BatchTodoResult>()
+    inputs.forEach((input) => {
+      fallbackMap.set(input.index, createFallbackResult(input, todayDate))
     })
+    return fallbackMap
+  }
 
-    const { object } = await generateObject({
-      model: openai("gpt-4o-mini"),
-      schema: BatchProcessResultSchema,
-      prompt: `You are a smart todo assistant. Process these ${inputs.length} tasks in batch. Extract metadata from each one.
+  const apiKey = await getOpenAIApiKey()
 
-IMPORTANT:
-- Extract a clean, concise one-line title (e.g., "Buy milk", "Call dentist")
-- Put ALL other details, context, and notes in the details field
-- Infer priority, due date, and category if mentioned
-- You MUST return exactly ${inputs.length} todos, one for each input
-- Use the originalIndex field to map each result back to its input
+  if (!apiKey) {
+    console.warn("OpenAI API key missing. Using fallback metadata for batch todos.")
+    return buildFallbackMap()
+  }
 
-DEFAULT VALUES (use these when no specific information is provided):
-- If NO priority is mentioned or inferred → set priority to "low"
-- If NO due date is mentioned or inferred → set dueDate to today (${todayDate})
+  // Create OpenAI instance with API key
+  const openai = createOpenAI({
+    apiKey,
+  })
+
+  try {
+    const basePrompt = await getAgentPrompt("processBatchTodos")
+    const prompt = `${basePrompt}
+
+Batch size: ${inputs.length}
+Today's date: ${todayDate}
 
 Inputs to process:
 ${inputs.map((input) => `[${input.index}] ${input.text}`).join("\n")}
@@ -75,39 +83,66 @@ Date Parsing Examples:
 - "in 3 days" = 3 days from now
 - "Monday" = next Monday
 - "end of month" = last day of current month
-- Today's date: ${todayDate}
 
 Priority Detection:
 - "urgent", "important", "asap", "critical" = high priority
 - "medium", "normal" = medium priority
 - "low", "whenever", "someday" = low priority
-- If NOTHING mentioned → default to "low"
 
 Category Examples:
 - Shopping-related = "shopping"
 - Work-related = "work"
 - Personal errands = "personal"
 - Health/medical = "health"
+- If category is unclear → "${DEFAULT_CATEGORY}"
 
-Return the structured todos with all extracted metadata.`,
+Return the structured todos with all extracted metadata.`
+
+    const { object } = await generateObject({
+      model: openai("gpt-4o-mini"),
+      schema: BatchProcessResultSchema,
+      prompt,
     })
 
     // Convert array to Map for easy lookup by index
     const resultMap = new Map<number, BatchTodoResult>()
 
     object.todos.forEach((todo) => {
+      if (!inputs.some((input) => input.index === todo.originalIndex)) {
+        return
+      }
+
       resultMap.set(todo.originalIndex, {
         title: todo.title,
         details: todo.details,
-        priority: todo.priority || "low", // Default to low if not provided
-        dueDate: todo.dueDate || todayDate, // Default to today if not provided
-        category: todo.category,
+        priority: normalizePriority(todo.priority),
+        dueDate: todo.dueDate || todayDate,
+        category: normalizeCategory(todo.category),
       })
+    })
+
+    inputs.forEach((input) => {
+      if (!resultMap.has(input.index)) {
+        resultMap.set(input.index, createFallbackResult(input, todayDate))
+      }
     })
 
     return resultMap
   } catch (error) {
-    console.error("Error processing batch todos:", error)
-    throw error
+    console.error("Error processing batch todos, using fallback metadata:", error)
+    return buildFallbackMap()
+  }
+}
+
+function createFallbackResult(input: BatchTodoInput, todayDate: string): BatchTodoResult {
+  const trimmedText = input.text?.trim() ?? ""
+  const normalizedTitle = trimmedText.length > 0 ? trimmedText : "Untitled task"
+
+  return {
+    title: normalizedTitle,
+    details: trimmedText && trimmedText !== input.text ? input.text : undefined,
+    priority: DEFAULT_PRIORITY,
+    dueDate: todayDate,
+    category: DEFAULT_CATEGORY,
   }
 }

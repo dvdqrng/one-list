@@ -1,6 +1,6 @@
 # Distribution and Installation Guide
 
-This guide explains how to build, distribute, and install your Notes List Electron app.
+This guide explains how to build, distribute, and install your One List Electron app.
 
 ## Built Files
 
@@ -11,8 +11,8 @@ ls -lh dist/
 ```
 
 You'll find:
-- `Notes List-0.1.0-arm64.dmg` - macOS installer (551 MB)
-- `Notes List-0.1.0-arm64-mac.zip` - macOS portable app (533 MB)
+- `One List-0.1.0-arm64.dmg` - macOS installer (551 MB)
+- `One List-0.1.0-arm64-mac.zip` - macOS portable app (533 MB)
 - `*.blockmap` files - Used for auto-updates (delta downloads)
 - `latest-mac.yml` - Update metadata file
 
@@ -21,13 +21,13 @@ You'll find:
 ### On macOS
 
 1. Open the `.dmg` file
-2. Right-click on "Notes List.app" → **Open** (required for unsigned apps)
+2. Right-click on "One List.app" → **Open** (required for unsigned apps)
 3. Click "Open" in the security dialog
 4. The app will launch!
 
 Or install via ZIP:
 1. Extract the `.zip` file
-2. Move "Notes List.app" to Applications
+2. Move "One List.app" to Applications
 3. Right-click → Open (first time only)
 
 ### Security Warning
@@ -168,10 +168,10 @@ To test the built app locally:
 
 ```bash
 # Open the DMG
-open "dist/Notes List-0.1.0-arm64.dmg"
+open "dist/One List-0.1.0-arm64.dmg"
 
 # Or run the app directly
-open "dist/mac-arm64/Notes List.app"
+open "dist/mac-arm64/One List.app"
 ```
 
 ## Troubleshooting
@@ -179,7 +179,7 @@ open "dist/mac-arm64/Notes List.app"
 ### "App is damaged" error on macOS
 This happens with unsigned apps. Solution:
 ```bash
-xattr -cr "dist/mac-arm64/Notes List.app"
+xattr -cr "dist/mac-arm64/One List.app"
 ```
 
 ### Updates not working

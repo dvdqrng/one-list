@@ -7,12 +7,18 @@
 
 import type { Todo, ProcessResult } from "./types"
 import type { SimilarTaskGroup } from "./find-similar-tasks"
+import type { AgentPromptsMap } from "@/types/agent-prompts"
+import type { AgentConfig } from "@/types/agent-config"
 
 // Type definitions for the Electron API
 interface ElectronAPI {
   processTodoText: (input: string, existingTodos: Todo[]) => Promise<ProcessResult>
   findSimilarTasks: (todos: Todo[]) => Promise<{ groups: SimilarTaskGroup[] }>
   transcribeAudio: (audioBuffer: ArrayBuffer) => Promise<{ text: string }>
+  getAgentPrompts?: () => Promise<AgentPromptsMap>
+  updateAgentPrompts?: (prompts: AgentPromptsMap) => Promise<AgentPromptsMap>
+  getAgentConfig?: () => Promise<AgentConfig>
+  updateAgentConfig?: (config: AgentConfig) => Promise<AgentConfig>
 }
 
 /**
@@ -107,4 +113,92 @@ export async function transcribeAudio(
   }
 
   return response.json()
+}
+
+async function parseJSON<T>(response: Response): Promise<T | null> {
+  try {
+    return (await response.json()) as T
+  } catch {
+    return null
+  }
+}
+
+export async function getAgentPromptsClient(): Promise<AgentPromptsMap> {
+  const electronAPI = getElectronAPI()
+
+  if (electronAPI?.getAgentPrompts) {
+    return electronAPI.getAgentPrompts()
+  }
+
+  const response = await fetch("/api/agent-prompts", { cache: "no-store" })
+  const payload = await parseJSON<{ prompts?: AgentPromptsMap; error?: string }>(response)
+
+  if (!response.ok || !payload?.prompts) {
+    throw new Error(payload?.error || "Failed to load prompts")
+  }
+
+  return payload.prompts
+}
+
+export async function updateAgentPromptsClient(
+  prompts: AgentPromptsMap
+): Promise<AgentPromptsMap> {
+  const electronAPI = getElectronAPI()
+
+  if (electronAPI?.updateAgentPrompts) {
+    return electronAPI.updateAgentPrompts(prompts)
+  }
+
+  const response = await fetch("/api/agent-prompts", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ prompts }),
+  })
+
+  const payload = await parseJSON<{ prompts?: AgentPromptsMap; error?: string }>(response)
+
+  if (!response.ok || !payload?.prompts) {
+    throw new Error(payload?.error || "Failed to save prompts")
+  }
+
+  return payload.prompts
+}
+
+export async function getAgentConfigClient(): Promise<AgentConfig> {
+  const electronAPI = getElectronAPI()
+
+  if (electronAPI?.getAgentConfig) {
+    return electronAPI.getAgentConfig()
+  }
+
+  const response = await fetch("/api/agent-config", { cache: "no-store" })
+  const payload = await parseJSON<{ config?: AgentConfig; error?: string }>(response)
+
+  if (!response.ok || !payload?.config) {
+    throw new Error(payload?.error || "Failed to load config")
+  }
+
+  return payload.config
+}
+
+export async function updateAgentConfigClient(config: AgentConfig): Promise<AgentConfig> {
+  const electronAPI = getElectronAPI()
+
+  if (electronAPI?.updateAgentConfig) {
+    return electronAPI.updateAgentConfig(config)
+  }
+
+  const response = await fetch("/api/agent-config", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ config }),
+  })
+
+  const payload = await parseJSON<{ config?: AgentConfig; error?: string }>(response)
+
+  if (!response.ok || !payload?.config) {
+    throw new Error(payload?.error || "Failed to save config")
+  }
+
+  return payload.config
 }

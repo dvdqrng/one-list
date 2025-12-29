@@ -184,7 +184,7 @@ export function UpdateDialog({ open, onOpenChange }: UpdateDialogProps) {
                             <div className="text-center space-y-2">
                                 <CheckCircle2 className="h-8 w-8 mx-auto text-green-500" />
                                 <p className="text-sm font-medium">Up to Date</p>
-                                <p className="text-xs text-muted-foreground">You are running the latest version of Notes List.</p>
+                                <p className="text-xs text-muted-foreground">You are running the latest version of One List.</p>
                             </div>
                         )}
 

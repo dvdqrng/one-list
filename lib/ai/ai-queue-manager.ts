@@ -1,6 +1,7 @@
 "use client"
 
 import type { AIProcessingJob, QueueConfig, Todo } from "../types"
+import type { BatchTodoResult } from "./process-batch-todos"
 
 type JobUpdateCallback = (todoId: string, updates: Partial<Todo>) => void
 
@@ -76,19 +77,12 @@ class AIQueueManager {
     })
 
     try {
-      // Process all jobs in a single batch API call
-      const { processBatchTodos } = await import("./process-batch-todos")
-
-      const batchInputs = batch.map((job, index) => ({
-        index,
-        text: job.inputText,
-      }))
-
-      const results = await processBatchTodos(batchInputs)
+      // Process all jobs via the server API
+      const results = await this.fetchBatchResults(batch)
 
       // Handle successful results
-      batch.forEach((job, index) => {
-        const result = results.get(index)
+      batch.forEach((job) => {
+        const result = results.get(job.todoId)
 
         if (result) {
           // Success - mark as enhanced
@@ -131,6 +125,53 @@ class AIQueueManager {
     // Process next batch if there are more items
     if (this.queue.length > 0) {
       this.scheduleBatchProcessing()
+    }
+  }
+
+  private async fetchBatchResults(batch: AIProcessingJob[]): Promise<Map<string, BatchTodoResult | null>> {
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), this.config.processingTimeoutMs)
+
+    try {
+      const response = await fetch("/api/enrich-todos", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          tasks: batch.map((job) => ({
+            id: job.todoId,
+            text: job.inputText,
+          })),
+        }),
+        signal: controller.signal,
+      })
+
+      if (!response.ok) {
+        let errorMessage = `Failed to enrich todos (status ${response.status})`
+        try {
+          const errorBody = await response.json()
+          if (errorBody?.error) {
+            errorMessage = errorBody.error
+          }
+        } catch {
+          // ignore
+        }
+        throw new Error(errorMessage)
+      }
+
+      const data = (await response.json()) as {
+        results: Array<{ id: string; result: BatchTodoResult | null }>
+      }
+
+      return new Map(data.results.map((entry) => [entry.id, entry.result]))
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") {
+        throw new Error("AI enrichment request timed out")
+      }
+      throw error
+    } finally {
+      clearTimeout(timeoutId)
     }
   }
 

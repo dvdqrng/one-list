@@ -1,7 +1,9 @@
 import { generateObject } from "ai"
-import { openai } from "@ai-sdk/openai"
+import { createOpenAI } from "@ai-sdk/openai"
 import { z } from "zod"
 import type { Todo } from "./types"
+import { getAgentPrompt } from "@/lib/ai/agent-prompts"
+import { getOpenAIApiKey } from "@/lib/ai/agent-config"
 
 const SimilarTaskGroupSchema = z.object({
   taskIds: z.array(z.string()).describe("Array of todo IDs that are similar to each other"),
@@ -41,37 +43,37 @@ export async function findSimilarTasks(todos: Todo[]): Promise<{ groups: Similar
   }
 
   try {
-    const { object } = await generateObject({
-      model: openai("gpt-4o-mini"),
-      schema: SimilarityResultSchema,
-      prompt: `You are a smart todo assistant. Analyze the following tasks and identify groups of similar/duplicate tasks that should be merged.
+    const apiKey = await getOpenAIApiKey()
+    if (!apiKey) {
+      throw new Error("OpenAI API key is not configured")
+    }
 
-Tasks (${todos.length} total):
-${todos.map((t, i) => `${i + 1}. [ID: ${t.id}]
+    const basePrompt = await getAgentPrompt("findSimilarTasks")
+    const prompt = `${basePrompt}
+
+Total tasks: ${todos.length}
+
+Tasks:
+${todos
+  .map(
+    (t, i) => `${i + 1}. [ID: ${t.id}]
    Title: ${t.title}
    ${t.details ? `Details: ${t.details}` : ""}
    ${t.priority ? `Priority: ${t.priority}` : ""}
    ${t.dueDate ? `Due: ${new Date(t.dueDate).toLocaleDateString()}` : ""}
    ${t.category ? `Category: ${t.category}` : ""}
-   ${t.completed ? "✓ COMPLETED" : "○ INCOMPLETE"}`).join("\n\n")}
+   ${t.completed ? "✓ COMPLETED" : "○ INCOMPLETE"}`
+  )
+  .join("\n\n")}
 
-Similarity Criteria:
-- Semantic similarity (e.g., "Buy groceries" = "Get food" = "Grocery shopping")
-- Same category and similar intent
-- Duplicate or redundant tasks
-- Tasks that are clearly the same thing worded differently
+Only return groups you are confident about (>70% similarity).`
 
-Rules:
-- Only group tasks that are truly similar/duplicates (confidence > 70%)
-- Don't group tasks that are just in the same category but are different actions
-- Don't group completed tasks with incomplete tasks (they might be recurring)
-- For each group, suggest a merged version that preserves all unique information
-- Combine details from all tasks in the group
-- Use the highest priority among grouped tasks
-- Use the earliest due date among grouped tasks
-- Choose the most descriptive title
+    const openai = createOpenAI({ apiKey })
 
-Return only groups with high confidence (>70%) of being duplicates/similar.`,
+    const { object } = await generateObject({
+      model: openai("gpt-4o-mini"),
+      schema: SimilarityResultSchema,
+      prompt,
     })
 
     return { groups: object.groups }

@@ -57,6 +57,16 @@ const electronAPI = {
     return ipcRenderer.invoke('ai:find-similar-tasks', todos);
   },
 
+  // Agent prompts
+  getAgentPrompts: () => {
+    console.log('getAgentPrompts called');
+    return ipcRenderer.invoke('agentPrompts:get');
+  },
+  updateAgentPrompts: (prompts) => {
+    console.log('updateAgentPrompts called');
+    return ipcRenderer.invoke('agentPrompts:update', prompts);
+  },
+
   // Auto-updates
   checkForUpdates: () => {
     console.log('checkForUpdates called');

@@ -6,6 +6,9 @@
  */
 
 import type { Item, Todo, ProposedChange } from "./types"
+import type { AgentPromptsMap } from "@/types/agent-prompts"
+import type { AgentConfig } from "@/types/agent-config"
+import type { AgentPromptsMap } from "@/types/agent-prompts"
 
 // ============================================
 // API Type Definitions
@@ -38,6 +41,10 @@ export interface ElectronAPI {
   transcribeAudio: (audioBuffer: ArrayBuffer) => Promise<string>
   processTodoText: (input: string, existingTodos: Todo[]) => Promise<ProposedChange[]>
   findSimilarTasks: (todos: Todo[]) => Promise<ProposedChange[]>
+  getAgentPrompts: () => Promise<AgentPromptsMap>
+  updateAgentPrompts: (prompts: AgentPromptsMap) => Promise<AgentPromptsMap>
+  getAgentConfig: () => Promise<AgentConfig>
+  updateAgentConfig: (config: AgentConfig) => Promise<AgentConfig>
 
   // Auto-updates
   checkForUpdates: () => Promise<void>

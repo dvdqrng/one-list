@@ -88,6 +88,10 @@ export interface ElectronAPI {
       };
     }>;
   }>;
+  getAgentPrompts: () => Promise<Record<string, string>>;
+  updateAgentPrompts: (prompts: Record<string, string>) => Promise<Record<string, string>>;
+  getAgentConfig: () => Promise<{ openaiApiKey: string }>;
+  updateAgentConfig: (config: { openaiApiKey: string }) => Promise<{ openaiApiKey: string }>;
 
   // Auto-updates
   checkForUpdates?: () => Promise<any>;

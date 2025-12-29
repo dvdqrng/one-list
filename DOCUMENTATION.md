@@ -1,4 +1,4 @@
-# Notes List - Complete Application Documentation
+# One List - Complete Application Documentation
 
 A sophisticated cross-platform todo application built with **Next.js 16 + Electron + AI**.
 
@@ -523,6 +523,8 @@ Responsive design detection for mobile layouts
 - Meeting transcript parsing
 - Duplicate detection & merge suggestions
 - Voice-to-todo (via transcription)
+- Agent system prompts dashboard (`/agent-settings`) for live editing
+- Manual OpenAI API key management from the same dashboard
 
 ### Focus Mode
 - Distraction-free timer (25min Pomodoro default)

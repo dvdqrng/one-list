@@ -22,10 +22,11 @@ import {
   useSidebar,
 } from "./ui/sidebar"
 import { RefreshCw } from "lucide-react"
-import { StarIcon, LightningIcon, MoonIcon, SunIcon, SidebarSimpleIcon, EyeIcon, EyeSlashIcon, CalendarBlankIcon, ListBulletsIcon, KanbanIcon, CaretDownIcon, DotsThreeVerticalIcon, IntersectIcon, SpinnerIcon } from "@phosphor-icons/react"
+import { StarIcon, LightningIcon, MoonIcon, SunIcon, SidebarSimpleIcon, EyeIcon, EyeSlashIcon, CalendarBlankIcon, ListBulletsIcon, KanbanIcon, CaretDownIcon, DotsThreeVerticalIcon, IntersectIcon, SpinnerIcon, GearSixIcon } from "@phosphor-icons/react"
 import { useTheme } from "next-themes"
+import { useRouter } from "next/navigation"
 import { aiQueueManager } from "@/lib/ai"
-import { useStore, useTodos, useSelectedTodo, useSelectedTitle } from "@/lib/store"
+import { useStore, useTodos, useSelectedTodo } from "@/lib/store"
 import { useFocusTimer } from "@/hooks/use-focus-timer"
 import { getDateForCategory, type DueDateCategory } from "@/lib/format"
 import { isTodo } from "@/lib/types"
@@ -81,7 +82,7 @@ export function TodoApp() {
   // Derived state from store
   const todos = useTodos()
   const selectedTodo = useSelectedTodo()
-  const selectedTitle = useSelectedTitle()
+  // Removed selectedTitle usage
 
   // Local UI state
   const [isProcessing, setIsProcessing] = React.useState(false)
@@ -90,6 +91,7 @@ export function TodoApp() {
   const [showUpdateDialog, setShowUpdateDialog] = React.useState(false)
   const [isSearchingSimilar, setIsSearchingSimilar] = React.useState(false)
   const { theme, setTheme } = useTheme()
+  const router = useRouter()
 
   // Focus timer hook
   const { startTimer } = useFocusTimer()
@@ -447,6 +449,16 @@ export function TodoApp() {
                   )}
                   <span>Find Similar Tasks</span>
                 </DropdownMenuItem>
+                <DropdownMenuItem
+                  onSelect={(e) => {
+                    e.preventDefault()
+                    router.push("/agent-settings")
+                  }}
+                  className="gap-2 cursor-pointer"
+                >
+                  <GearSixIcon className="h-4 w-4" />
+                  <span>Agent Settings</span>
+                </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => window.open('https://github.com/dvdqrng/one-list', '_blank')} className="gap-2 cursor-pointer">
                   <LightningIcon className="h-4 w-4" />
                   <span>GitHub Repository</span>
@@ -489,7 +501,6 @@ export function TodoApp() {
       </SidebarInset>
       <TodoSidebar
         selectedTodo={selectedTodo}
-        selectedTitle={selectedTitle}
         allTodos={todos}
         allItems={items}
         onUpdateTodo={handleUpdateTodo}

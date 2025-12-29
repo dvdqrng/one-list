@@ -1,7 +1,7 @@
 "use client"
 
 import { forwardRef, useCallback, useEffect, useRef, useImperativeHandle, type ReactNode, type KeyboardEvent } from "react"
-import { CheckCircleIcon, CircleIcon, SpinnerIcon } from "@phosphor-icons/react"
+import { CheckCircleIcon, CircleIcon, SpinnerIcon, CaretDownIcon, CaretRightIcon } from "@phosphor-icons/react"
 import { Checkbox, type CheckboxStatus } from "@/components/ui/checkbox"
 import { MetadataBadges } from "@/components/ui/metadata-badges"
 import { cn } from "@/lib/utils"
@@ -37,7 +37,7 @@ export interface TaskItemKeyboardHandlers {
 export interface TaskItemProps {
   /** Task data - minimal required fields */
   todo: Pick<Todo, "id" | "title" | "completed"> &
-    Partial<Pick<Todo, "priority" | "dueDate" | "category" | "aiProcessingStatus" | "indent" | "status">>
+  Partial<Pick<Todo, "priority" | "dueDate" | "category" | "aiProcessingStatus" | "indent" | "status">>
 
   /** Called when checkbox is toggled (legacy) */
   onToggle?: (id: string) => void
@@ -101,6 +101,12 @@ export interface TaskItemProps {
 
   /** Custom content after the main content */
   children?: ReactNode
+
+  /** Handler for collapsing/expanding if item is a parent */
+  onCollapseToggle?: () => void
+
+  /** Collapse state */
+  isCollapsed?: boolean
 }
 
 // ============================================
@@ -135,6 +141,13 @@ const inputSizes: Record<TaskItemSize, string> = {
 // Component
 // ============================================
 
+// Base padding values matching the px-* classes in sizeClasses
+const basePadding: Record<TaskItemSize, number> = {
+  sm: 8,
+  md: 12,
+  lg: 12,
+}
+
 export const TaskItem = forwardRef<HTMLInputElement, TaskItemProps>(
   function TaskItem(
     {
@@ -158,6 +171,8 @@ export const TaskItem = forwardRef<HTMLInputElement, TaskItemProps>(
       onStartEdit,
       onFinishEdit,
       children,
+      onCollapseToggle,
+      isCollapsed,
     },
     ref
   ) {
@@ -309,11 +324,31 @@ export const TaskItem = forwardRef<HTMLInputElement, TaskItemProps>(
           interactive && "hover:bg-muted/30",
           className
         )}
-        style={{ paddingLeft: totalIndent > 0 ? `${12 + totalIndent * 24}px` : undefined }}
+        style={{ paddingLeft: `${totalIndent * 20 + basePadding[size]}px` }}
         onClick={() => handleSelect?.(todo.id)}
       >
-        {/* Checkbox or Icon */}
+
+        {/* Checkbox or Icon or Chevron */}
         {(() => {
+          if (onCollapseToggle) {
+            return (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onCollapseToggle()
+                }}
+                className={cn("shrink-0 rounded-sm hover:bg-muted/50 text-muted-foreground transition-colors outline-none", iconSizes[size])}
+              >
+                {isCollapsed ? (
+                  <CaretRightIcon className="w-full h-full" weight="bold" />
+                ) : (
+                  <CaretDownIcon className="w-full h-full" weight="bold" />
+                )}
+              </button>
+            )
+          }
+
           // Convert TodoStatus to CheckboxStatus
           const getCheckboxStatus = (): CheckboxStatus => {
             if (todo.completed || todo.status === "done") return "checked"
@@ -325,7 +360,7 @@ export const TaskItem = forwardRef<HTMLInputElement, TaskItemProps>(
           const handleStatusChange = (checkboxStatus: CheckboxStatus) => {
             const todoStatus: TodoStatus =
               checkboxStatus === "checked" ? "done" :
-              checkboxStatus === "in-progress" ? "in-progress" : "due"
+                checkboxStatus === "in-progress" ? "in-progress" : "due"
 
             if (onStatusChange) {
               onStatusChange(todo.id, todoStatus)
@@ -362,7 +397,7 @@ export const TaskItem = forwardRef<HTMLInputElement, TaskItemProps>(
                 // Cycle: unchecked -> in-progress -> checked -> unchecked
                 const nextStatus: CheckboxStatus =
                   checkboxStatus === "unchecked" ? "in-progress" :
-                  checkboxStatus === "in-progress" ? "checked" : "unchecked"
+                    checkboxStatus === "in-progress" ? "checked" : "unchecked"
                 handleStatusChange(nextStatus)
               }}
               className="shrink-0"

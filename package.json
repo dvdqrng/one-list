@@ -28,8 +28,8 @@
     "dev:all": "concurrently \"pnpm dev\" \"wait-on http://localhost:3000 && pnpm electron:dev\""
   },
   "build": {
-    "appId": "com.noteslist.app",
-    "productName": "Notes List",
+    "appId": "com.onelist.app",
+    "productName": "One List",
     "files": [
       "out/**/*",
       "electron/**/*",
