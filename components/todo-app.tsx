@@ -377,7 +377,7 @@ export function TodoApp() {
                 variant="ghost"
                 size="icon"
                 className="h-7 w-7 text-muted-foreground"
-                onClick={() => setListGroupBy(listGroupBy === "dueDate" ? "position" : "dueDate")}
+                onClick={() => setListGroupBy(listGroupBy === "dueDate" ? "project" : "dueDate")}
                 title={listGroupBy === "dueDate" ? "Group by project" : "Group by due date"}
               >
                 <CalendarBlankIcon className="h-4 w-4" weight={listGroupBy === "dueDate" ? "fill" : "regular"} />

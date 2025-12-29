@@ -31,6 +31,7 @@ export interface ItemGroup {
     color?: string
     isCollapsible?: boolean
     showEmpty?: boolean
+    projectRoot?: Item
   }
 }
 
@@ -259,53 +260,65 @@ function groupByCategory(items: Item[], options: GroupingOptions): ItemGroup[] {
  * Group items by Root Project (Indent 0 items)
  */
 function groupByProject(items: Item[], options: GroupingOptions): ItemGroup[] {
-  const { hideCompleted, collapsedGroups } = options
-  const sorted = sortItemsByPosition(items) // Ensure order
+  const { hideCompleted } = options
+  const sorted = sortItemsByPosition(items)
 
-  // Strategy: Find root items (indent 0). All subsequent items until next root item belong to it.
   const groups: ItemGroup[] = []
-
   let currentRoot: Item | null = null
   let currentItems: Item[] = []
+  const ungrouped: Item[] = []
 
-  const flush = () => {
-    if (currentRoot) {
-      const isCollapsed = collapsedGroups?.has(currentRoot.id) ?? false
-      groups.push({
-        key: currentRoot.id,
-        label: currentRoot.title || "Untitled Project",
-        items: isCollapsed ? [] : currentItems,
-        totalCount: currentItems.length,
-        metadata: { isCollapsible: true }
-      })
-    } else if (currentItems.length > 0) {
-      // Orphaned items at start? Or simply non-indented items that are just tasks?
-      // User says: level 0 is just a task. But if grouping by project, implies task is a project.
-      // We will treat Level 0 tasks as the "Project" headers for this view.
-    }
+  const shouldInclude = (item: Item) => !hideCompleted || !item.completed
+
+  const flushCurrentGroup = () => {
+    if (!currentRoot) return
+
+    const totalCount = currentItems.length
+
+    groups.push({
+      key: currentRoot.id,
+      label: currentRoot.title || "Untitled Project",
+      items: currentItems,
+      totalCount,
+      metadata: {
+        isCollapsible: true,
+        showEmpty: totalCount === 0,
+        projectRoot: currentRoot,
+      }
+    })
+
+    currentRoot = null
+    currentItems = []
   }
 
   for (const item of sorted) {
-    if (!isTodo(item)) continue;
+    if (!isTodo(item)) continue
 
-    if ((item.indent || 0) === 0) {
-      // New root found
-      flush()
+    const indent = item.indent || 0
+
+    if (indent === 0) {
+      if (currentRoot) flushCurrentGroup()
       currentRoot = item
-      currentItems = [item] // Include the root item itself? Usually Kanban doesn't show the column header as card.
-      // If we want Kanban columns to be "Projects", the column is the project. Cards are children.
-      // So we reset currentItems to [] if we don't want root item in the column.
       currentItems = []
+    } else if (currentRoot) {
+      if (shouldInclude(item)) currentItems.push(item)
     } else {
-      // Child item
-      if (currentRoot) {
-        if (!hideCompleted || !item.completed) {
-          currentItems.push(item)
-        }
-      }
+      // Child without root - treat as ungrouped
+      if (shouldInclude(item)) ungrouped.push(item)
     }
   }
-  flush()
+
+  if (currentRoot) flushCurrentGroup()
+
+  if (ungrouped.length > 0) {
+    groups.push({
+      key: "no-project",
+      label: "No Project",
+      items: ungrouped,
+      totalCount: ungrouped.length,
+      metadata: { isCollapsible: true }
+    })
+  }
 
   return groups
 }

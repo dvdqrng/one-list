@@ -668,7 +668,7 @@ pnpm electron:build:mac # Build macOS app
 3. **Reduced boilerplate** - Removed unnecessary wrapper handlers in `todo-app.tsx`
 4. **Replaced boolean flags with explicit enums** for better code clarity:
    - `hideCompleted: boolean` → `showCompleted: boolean` (positive naming, less cognitive load)
-   - `groupByDueDate: boolean` → `listGroupBy: ListGroupBy` (`"position" | "dueDate"`)
+   - `groupByDueDate: boolean` → `listGroupBy: ListGroupBy` (`"project" | "dueDate"`)
 5. **Removed @deprecated warnings** from `Todo`/`Title` types - they serve a valid purpose as view types for component props
 6. **TodoTextEditor now uses Zustand store directly** - Reduced from 13+ props to just `onStartFocus`. Component accesses store for `items`, `showMetadata`, `showCompleted`, `listGroupBy`, and all actions.
 7. **Consolidated AI files into `lib/ai/`** - All AI processing code now in one directory with clean re-exports via `lib/ai/index.ts`.

@@ -23,6 +23,10 @@ yarn-error.log*
 # env files
 .env*
 
+# local agent config/prompts (store API keys + custom prompts)
+data/agent-config.json
+data/agent-prompts.json
+
 # vercel
 .vercel
 

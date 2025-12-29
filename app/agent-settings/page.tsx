@@ -211,7 +211,7 @@ export default function AgentSettingsPage() {
             <section className="space-y-4">
               <div className="flex flex-col gap-2">
                 <div>
-                  <h2 className={HEADER_TEXT_CLASS}>OpenAI API Key</h2>
+                  <h2 className={PROMPT_HEADER_TEXT_CLASS}>OpenAI API Key</h2>
                   <p className={`${PARAGRAPH_TEXT_CLASS} text-muted-foreground`}>
                     Provide a personal API key to power AI enrichments. Environment variables still take precedence.
                   </p>

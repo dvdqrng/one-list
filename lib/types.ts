@@ -129,8 +129,8 @@ export function sortItemsByPosition(items: Item[]): Item[] {
 // ============================================
 
 export type ViewMode = "list" | "kanban"
-export type ListGroupBy = "position" | "dueDate"
-export type KanbanGroupBy = "dueDate" | "priority" | "category" | "status"
+export type ListGroupBy = "dueDate" | "project"
+export type KanbanGroupBy = "dueDate" | "priority" | "category" | "project" | "status"
 
 // ============================================
 // AI Processing Types

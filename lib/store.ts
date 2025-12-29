@@ -122,7 +122,7 @@ export const useStore = create<AppState & AppActions>()(
       // UI state
       showMetadata: false,
       showCompleted: true,
-      listGroupBy: "position",
+      listGroupBy: "project",
       viewMode: "list",
       kanbanGroupBy: "dueDate",
 
@@ -505,6 +505,14 @@ export const useStore = create<AppState & AppActions>()(
     }),
     {
       name: "todo-app-ui-preferences",
+      version: 2,
+      migrate: (persistedState: any, version) => {
+        if (!persistedState) return persistedState
+        if (version < 2 && persistedState.listGroupBy === "position") {
+          return { ...persistedState, listGroupBy: "project" }
+        }
+        return persistedState
+      },
       partialize: (state) => ({
         viewMode: state.viewMode,
         kanbanGroupBy: state.kanbanGroupBy,

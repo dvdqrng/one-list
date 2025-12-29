@@ -1,7 +1,6 @@
 "use client"
 
-import { useState, useMemo, useEffect, useCallback, useRef } from "react"
-import { CaretDownIcon, CaretRightIcon } from "@phosphor-icons/react"
+import { useState, useMemo, useEffect, useCallback } from "react"
 import {
   DndContext,
   closestCenter,
@@ -10,6 +9,7 @@ import {
   useSensor,
   useSensors,
   DragEndEvent,
+  useDroppable,
 } from "@dnd-kit/core"
 import {
   arrayMove,
@@ -19,7 +19,6 @@ import {
 } from "@dnd-kit/sortable"
 import { SortableItem } from "@/components/sortable-item"
 import { DraggableItem } from "@/components/draggable-item"
-import { DueDateHeader } from "@/components/ui/collapsible-header"
 import { TaskItem } from "@/components/ui/task-item"
 import { useGroupedItems, getItemIdsFromGroups } from "@/lib/grouping"
 import { useFocusManager, type KeyboardActions } from "@/hooks/use-focus-manager"
@@ -28,6 +27,12 @@ import { sortItemsByPosition, isTodo, isSeparator } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import { useStore } from "@/lib/store"
 import type { Item, Todo } from "@/lib/types"
+import { CaretDownIcon, CaretRightIcon, PlayIcon } from "@phosphor-icons/react"
+
+type ListEntry =
+  | { kind: "header"; key: string; label: string; isFirst: boolean; isNow: boolean }
+  | { kind: "placeholder"; key: string }
+  | { kind: "item"; item: Item; category?: string }
 
 // Constants
 const MAX_INDENT_LEVEL = 5 // Increased depth for hierarchy
@@ -74,43 +79,36 @@ export function TodoTextEditor({ onStartFocus }: TodoTextEditorProps) {
   })
 
   // ============================================
-  // Sorted Items & Visibility Logic (For Position View)
+  // Sorted Items (used for drag/drop reordering)
   // ============================================
 
   const sortedItems = useMemo(() => sortItemsByPosition(items), [items])
 
   const visibleSortedItems = useMemo(() => {
-    if (groupByDueDate) return [] // Not used for due date view
-
     const visible: Item[] = []
     let skipUntilLevelUnder = -1
 
     for (let i = 0; i < sortedItems.length; i++) {
       const item = sortedItems[i]
 
-      // Filter out completed if hidden
       if (!showCompleted && isTodo(item) && item.completed) continue
 
       const indent = item.indent || 0
 
-      // If we are effectively inside a collapsed parent
       if (skipUntilLevelUnder !== -1) {
         if (indent > skipUntilLevelUnder) {
-          continue // Skip this child
+          continue
         } else {
-          skipUntilLevelUnder = -1 // Hierarchy returned to parent level or higher
+          skipUntilLevelUnder = -1
         }
       }
 
       visible.push(item)
 
-      // Check if this item is collapsed and has children
       if (collapsedItems.has(item.id)) {
-        // Peek ahead to see if next item is a child
         if (i + 1 < sortedItems.length) {
           const nextItem = sortedItems[i + 1]
           const nextIndent = nextItem.indent || 0
-          // If next item is indented deeper, we are a parent with children to hide
           if (nextIndent > indent) {
             skipUntilLevelUnder = indent
           }
@@ -118,7 +116,36 @@ export function TodoTextEditor({ onStartFocus }: TodoTextEditorProps) {
       }
     }
     return visible
-  }, [sortedItems, collapsedItems, showCompleted, groupByDueDate])
+  }, [sortedItems, collapsedItems, showCompleted])
+
+  const listEntries = useMemo((): ListEntry[] => {
+    if (!groupByDueDate) {
+      return visibleSortedItems.map(item => ({ kind: "item", item }))
+    }
+
+    const entries: ListEntry[] = []
+    groups.forEach((group, index) => {
+      const isCollapsed = collapsedDueDateGroups.has(group.key)
+      entries.push({
+        kind: "header",
+        key: group.key,
+        label: group.label,
+        isFirst: index === 0,
+        isNow: group.key === "now"
+      })
+
+      if (!isCollapsed) {
+        if (group.items.length > 0) {
+          group.items.forEach(item => {
+            entries.push({ kind: "item", item, category: group.key })
+          })
+        } else if (group.metadata?.showEmpty) {
+          entries.push({ kind: "placeholder", key: group.key })
+        }
+      }
+    })
+    return entries
+  }, [groupByDueDate, groups, collapsedDueDateGroups, visibleSortedItems])
 
 
   // ============================================
@@ -126,20 +153,13 @@ export function TodoTextEditor({ onStartFocus }: TodoTextEditorProps) {
   // ============================================
 
   const focusableIds = useMemo(() => {
-    if (groupByDueDate) {
-      // Logic for groups
-      const ids: string[] = []
-      for (const group of groups) {
-        for (const item of group.items) ids.push(item.id)
-        if (group.items.length === 0 && group.metadata?.showEmpty) {
-          ids.push(`placeholder-${group.key}`)
-        }
-      }
-      return ids
-    } else {
-      return visibleSortedItems.map(i => i.id)
+    const ids: string[] = []
+    for (const entry of listEntries) {
+      if (entry.kind === "item") ids.push(entry.item.id)
+      if (entry.kind === "placeholder") ids.push(`placeholder-${entry.key}`)
     }
-  }, [groups, groupByDueDate, visibleSortedItems])
+    return ids
+  }, [listEntries])
 
   const focusManager = useFocusManager(focusableIds)
 
@@ -325,7 +345,6 @@ export function TodoTextEditor({ onStartFocus }: TodoTextEditorProps) {
       isParent?: boolean
       isCollapsed?: boolean
       isProjectHeader?: boolean
-      isFirstProjectHeader?: boolean
     }
   ) => {
     const visualIndent = options?.indentLevel ?? item.indent ?? 0
@@ -408,118 +427,99 @@ export function TodoTextEditor({ onStartFocus }: TodoTextEditorProps) {
   }, [placeholderTitles, insertItemAfter, focusManager, setPendingFocus])
 
   // ============================================
-  // Render Due Date View
+  // Render Unified Grouped View
   // ============================================
 
-  const renderDueDateView = () => (
-    <div className="space-y-4">
-      {groups.map((group, groupIndex) => {
-        const isNowCategory = group.key === "now"
-        const isFirst = groupIndex === 0
-        const isCollapsed = collapsedDueDateGroups.has(group.key)
-
-        return (
-          <div
-            key={group.key}
-            className={cn("rounded-lg transition-colors")}
-          >
-            <DueDateHeader
-              category={group.key}
-              label={group.label}
-              isCollapsed={isCollapsed}
-              isFirst={isFirst}
-              onToggle={() => toggleDueDateGroupCollapse(group.key)}
-              onStartFocus={isNowCategory ? onStartFocus : undefined}
-            />
-            {!isCollapsed && (
-              <div className={cn(isNowCategory && "pb-2")}>
-                {group.items.length > 0 ? (
-                  group.items.map((item) => (
-                    <DraggableItem key={item.id} id={item.id} category={group.key}>
-                      {renderTodo(item, {
-                        category: group.key,
-                        indentLevel: item.indent ?? 0,
-                      })}
-                    </DraggableItem>
-                  ))
-                ) : (
-                  group.metadata?.showEmpty && renderPlaceholder(group.key)
-                )}
-              </div>
-            )}
-          </div>
-        )
-      })}
-    </div>
-  )
-
-  // ============================================
-  // Render Position View
-  // ============================================
-
-  const renderPositionView = () => {
+  const renderGroupedView = () => {
     let projectGroupIndex = 0
 
     return (
-      <div className="space-y-0 relative">
+      <div className={groupByDueDate ? "space-y-4" : "space-y-0 relative"}>
         <SortableContext items={sortableIds} strategy={verticalListSortingStrategy}>
-          {visibleSortedItems.map((item, index) => {
-          // Simplify: We need to know if it's a parent to render caret
-          // We can check global sortedItems to optimize? 
-          // Or just check visible items... NO. If it is collapsed, visible items won't show the child.
-          // So we must check the original sortedItems to see if any child exists.
-          // Finding index in global list...
-          const globalIndex = sortedItems.findIndex(i => i.id === item.id)
-          let isParent = false
-          if (globalIndex !== -1 && globalIndex + 1 < sortedItems.length) {
-            const nextItem = sortedItems[globalIndex + 1]
-            if ((nextItem.indent || 0) > (item.indent || 0)) {
-              isParent = true
+          {listEntries.map((entry) => {
+            if (entry.kind === "header") {
+              return (
+                <DueDateGroupRow
+                  key={`header-${entry.key}`}
+                  entry={entry}
+                  isCollapsed={collapsedDueDateGroups.has(entry.key)}
+                  onToggle={() => toggleDueDateGroupCollapse(entry.key)}
+                  onStartFocus={entry.isNow ? onStartFocus : undefined}
+                />
+              )
             }
-          }
 
-          if (isSeparator(item)) {
-            return (
-              <SortableItem key={item.id} id={item.id}>
-                <div
-                  className="h-4 flex items-center px-3 cursor-pointer hover:bg-muted/20"
-                  onClick={() => deleteItem(item.id)}
-                >
-                  <div className="w-full h-px bg-border/30" />
+            if (entry.kind === "placeholder") {
+              return (
+                <div key={`placeholder-${entry.key}`} className="pl-3">
+                  {renderPlaceholder(entry.key)}
                 </div>
-              </SortableItem>
-            )
-          }
-
-          if (isTodo(item)) {
-            const itemIndent = item.indent ?? 0
-            const isCollapsed = collapsedItems.has(item.id)
-            const isProjectHeader = !groupByDueDate && itemIndent === 0 && isParent
-            const isFirstProjectHeader = isProjectHeader && projectGroupIndex === 0
-
-            const element = (
-              <SortableItem
-                key={item.id}
-                id={item.id}
-                className={cn(isProjectHeader && (isFirstProjectHeader ? "mt-0" : "mt-8"))}
-              >
-                {renderTodo(item, {
-                  indentLevel: itemIndent,
-                  isParent,
-                  isCollapsed,
-                  isProjectHeader,
-                  isFirstProjectHeader,
-                })}
-              </SortableItem>
-            )
-
-            if (isProjectHeader) {
-              projectGroupIndex += 1
+              )
             }
 
-            return element
-          }
-          return null
+            const item = entry.item
+
+            const globalIndex = sortedItems.findIndex(i => i.id === item.id)
+            let isParent = false
+            if (globalIndex !== -1 && globalIndex + 1 < sortedItems.length) {
+              const nextItem = sortedItems[globalIndex + 1]
+              if ((nextItem.indent || 0) > (item.indent || 0)) {
+                isParent = true
+              }
+            }
+
+            if (isSeparator(item)) {
+              return (
+                <SortableItem key={item.id} id={item.id}>
+                  <div
+                    className="h-4 flex items-center px-3 cursor-pointer hover:bg-muted/20"
+                    onClick={() => deleteItem(item.id)}
+                  >
+                    <div className="w-full h-px bg-border/30" />
+                  </div>
+                </SortableItem>
+              )
+            }
+
+            if (isTodo(item)) {
+              const itemIndent = item.indent ?? 0
+              const isCollapsed = collapsedItems.has(item.id)
+              const isProjectHeader = !groupByDueDate && itemIndent === 0 && isParent
+              const isFirstProjectHeader = isProjectHeader && projectGroupIndex === 0
+
+              if (groupByDueDate) {
+                return (
+                  <DraggableItem key={item.id} id={item.id} category={entry.category}>
+                    {renderTodo(item, {
+                      category: entry.category,
+                      indentLevel: item.indent ?? 0,
+                    })}
+                  </DraggableItem>
+                )
+              }
+
+              const element = (
+                <SortableItem
+                  key={item.id}
+                  id={item.id}
+                  className={cn(isProjectHeader && (isFirstProjectHeader ? "mt-0" : "mt-8"))}
+                >
+                  {renderTodo(item, {
+                    indentLevel: itemIndent,
+                    isParent,
+                    isCollapsed,
+                    isProjectHeader,
+                  })}
+                </SortableItem>
+              )
+
+              if (isProjectHeader) {
+                projectGroupIndex += 1
+              }
+
+              return element
+            }
+            return null
           })}
         </SortableContext>
       </div>
@@ -536,11 +536,58 @@ export function TodoTextEditor({ onStartFocus }: TodoTextEditorProps) {
       collisionDetection={closestCenter}
       onDragEnd={handleDragEnd}
     >
-      {groupByDueDate ? (
-        renderDueDateView()
-      ) : (
-        renderPositionView()
-      )}
+      {renderGroupedView()}
     </DndContext>
+  )
+}
+
+interface DueDateGroupRowProps {
+  entry: Extract<ListEntry, { kind: "header" }>
+  isCollapsed: boolean
+  onToggle: () => void
+  onStartFocus?: () => void
+}
+
+function DueDateGroupRow({ entry, isCollapsed, onToggle, onStartFocus }: DueDateGroupRowProps) {
+  const { setNodeRef, isOver } = useDroppable({
+    id: `drop-${entry.key}`,
+    data: { category: entry.key },
+    disabled: false,
+  })
+
+  return (
+    <div
+      ref={setNodeRef}
+      className={cn(
+        "flex items-center gap-2 px-3 py-2 text-sm font-semibold text-muted-foreground",
+        !entry.isFirst && "mt-6",
+        isOver && "bg-muted/40 rounded-md"
+      )}
+    >
+      <button
+        type="button"
+        onClick={onToggle}
+        className="shrink-0 text-muted-foreground hover:opacity-80"
+      >
+        {isCollapsed ? (
+          <CaretRightIcon className="h-4 w-4" weight="bold" />
+        ) : (
+          <CaretDownIcon className="h-4 w-4" weight="bold" />
+        )}
+      </button>
+      <span className={cn("text-base", entry.isNow && "text-primary")}>{entry.label}</span>
+      <div className="ml-auto flex items-center gap-2">
+        {entry.isNow && onStartFocus && (
+          <button
+            type="button"
+            onClick={onStartFocus}
+            className="flex items-center gap-1 rounded-full border px-2 py-1 text-xs"
+          >
+            <PlayIcon className="h-3 w-3" weight="fill" />
+            Focus
+          </button>
+        )}
+      </div>
+    </div>
   )
 }
