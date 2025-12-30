@@ -149,7 +149,21 @@ try {
   contextBridge.exposeInMainWorld('electronDB', electronAPI);
   console.log('=== electronDB successfully exposed to window ===');
   console.log('API keys:', Object.keys(electronAPI));
+
+  contextBridge.exposeInMainWorld('electron', {
+    ...electronAPI,
+    agentPrompts: {
+      get: () => ipcRenderer.invoke('agentPrompts:get'),
+      update: (prompts) => ipcRenderer.invoke('agentPrompts:update', prompts),
+    },
+    agentConfig: {
+      get: () => ipcRenderer.invoke('agentConfig:get'),
+      update: (config) => ipcRenderer.invoke('agentConfig:update', config),
+    },
+  });
+  console.log('=== electron API successfully exposed to window ===');
+
 } catch (error) {
-  console.error('=== FAILED TO EXPOSE electronDB ===', error);
+  console.error('=== FAILED TO EXPOSE an API ===', error);
   console.error('Error stack:', error.stack);
 }

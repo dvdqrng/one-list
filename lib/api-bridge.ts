@@ -11,22 +11,26 @@ import type { AgentPromptsMap } from "@/types/agent-prompts"
 import type { AgentConfig } from "@/types/agent-config"
 
 // Type definitions for the Electron API
-interface ElectronAPI {
+interface ElectronNewAPI {
   processTodoText: (input: string, existingTodos: Todo[]) => Promise<ProcessResult>
   findSimilarTasks: (todos: Todo[]) => Promise<{ groups: SimilarTaskGroup[] }>
   transcribeAudio: (audioBuffer: ArrayBuffer) => Promise<{ text: string }>
-  getAgentPrompts?: () => Promise<AgentPromptsMap>
-  updateAgentPrompts?: (prompts: AgentPromptsMap) => Promise<AgentPromptsMap>
-  getAgentConfig?: () => Promise<AgentConfig>
-  updateAgentConfig?: (config: AgentConfig) => Promise<AgentConfig>
+  agentPrompts: {
+    get: () => Promise<AgentPromptsMap>
+    update: (prompts: AgentPromptsMap) => Promise<AgentPromptsMap>
+  }
+  agentConfig: {
+    get: () => Promise<AgentConfig>
+    update: (config: AgentConfig) => Promise<AgentConfig>
+  }
 }
 
 /**
  * Check if we're running in Electron with the API available
  */
-function getElectronAPI(): ElectronAPI | null {
-  if (typeof window !== "undefined" && (window as { electronDB?: ElectronAPI }).electronDB) {
-    return (window as { electronDB?: ElectronAPI }).electronDB!
+function getElectronAPI(): ElectronNewAPI | null {
+  if (typeof window !== "undefined" && (window as { electron?: ElectronNewAPI }).electron) {
+    return (window as { electron?: ElectronNewAPI }).electron!
   }
   return null
 }
@@ -44,19 +48,7 @@ export async function processTodoText(
     return electronAPI.processTodoText(input, existingTodos)
   }
 
-  // Fallback to API route
-  const response = await fetch("/api/process-todo-text", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ input, existingTodos }),
-  })
-
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({ error: "Unknown error" }))
-    throw new Error(errorData.error || "Failed to process todo text")
-  }
-
-  return response.json()
+  throw new Error("Electron API not available")
 }
 
 /**
@@ -71,18 +63,7 @@ export async function findSimilarTasks(
     return electronAPI.findSimilarTasks(todos)
   }
 
-  // Fallback to API route
-  const response = await fetch("/api/find-similar-tasks", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ todos }),
-  })
-
-  if (!response.ok) {
-    throw new Error("Failed to find similar tasks")
-  }
-
-  return response.json()
+  throw new Error("Electron API not available")
 }
 
 /**
@@ -98,46 +79,17 @@ export async function transcribeAudio(
     return electronAPI.transcribeAudio(arrayBuffer)
   }
 
-  // Fallback to API route
-  const formData = new FormData()
-  formData.append("audio", audioBlob, "recording.webm")
-
-  const response = await fetch("/api/transcribe", {
-    method: "POST",
-    body: formData,
-  })
-
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({ error: "Unknown error" }))
-    throw new Error(`Transcription failed: ${errorData.error || response.statusText}`)
-  }
-
-  return response.json()
-}
-
-async function parseJSON<T>(response: Response): Promise<T | null> {
-  try {
-    return (await response.json()) as T
-  } catch {
-    return null
-  }
+  throw new Error("Electron API not available")
 }
 
 export async function getAgentPromptsClient(): Promise<AgentPromptsMap> {
   const electronAPI = getElectronAPI()
 
-  if (electronAPI?.getAgentPrompts) {
-    return electronAPI.getAgentPrompts()
+  if (electronAPI?.agentPrompts) {
+    return electronAPI.agentPrompts.get()
   }
 
-  const response = await fetch("/api/agent-prompts", { cache: "no-store" })
-  const payload = await parseJSON<{ prompts?: AgentPromptsMap; error?: string }>(response)
-
-  if (!response.ok || !payload?.prompts) {
-    throw new Error(payload?.error || "Failed to load prompts")
-  }
-
-  return payload.prompts
+  throw new Error("Electron API not available")
 }
 
 export async function updateAgentPromptsClient(
@@ -145,60 +97,29 @@ export async function updateAgentPromptsClient(
 ): Promise<AgentPromptsMap> {
   const electronAPI = getElectronAPI()
 
-  if (electronAPI?.updateAgentPrompts) {
-    return electronAPI.updateAgentPrompts(prompts)
+  if (electronAPI?.agentPrompts) {
+    return electronAPI.agentPrompts.update(prompts)
   }
 
-  const response = await fetch("/api/agent-prompts", {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ prompts }),
-  })
-
-  const payload = await parseJSON<{ prompts?: AgentPromptsMap; error?: string }>(response)
-
-  if (!response.ok || !payload?.prompts) {
-    throw new Error(payload?.error || "Failed to save prompts")
-  }
-
-  return payload.prompts
+  throw new Error("Electron API not available")
 }
 
 export async function getAgentConfigClient(): Promise<AgentConfig> {
   const electronAPI = getElectronAPI()
 
-  if (electronAPI?.getAgentConfig) {
-    return electronAPI.getAgentConfig()
+  if (electronAPI?.agentConfig) {
+    return electronAPI.agentConfig.get()
   }
 
-  const response = await fetch("/api/agent-config", { cache: "no-store" })
-  const payload = await parseJSON<{ config?: AgentConfig; error?: string }>(response)
-
-  if (!response.ok || !payload?.config) {
-    throw new Error(payload?.error || "Failed to load config")
-  }
-
-  return payload.config
+  throw new Error("Electron API not available")
 }
 
 export async function updateAgentConfigClient(config: AgentConfig): Promise<AgentConfig> {
   const electronAPI = getElectronAPI()
 
-  if (electronAPI?.updateAgentConfig) {
-    return electronAPI.updateAgentConfig(config)
+  if (electronAPI?.agentConfig) {
+    return electronAPI.agentConfig.update(config)
   }
 
-  const response = await fetch("/api/agent-config", {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ config }),
-  })
-
-  const payload = await parseJSON<{ config?: AgentConfig; error?: string }>(response)
-
-  if (!response.ok || !payload?.config) {
-    throw new Error(payload?.error || "Failed to save config")
-  }
-
-  return payload.config
+  throw new Error("Electron API not available")
 }

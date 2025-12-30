@@ -9,6 +9,7 @@ import {
   useSensor,
   useSensors,
   DragEndEvent,
+  useDroppable,
 } from "@dnd-kit/core"
 import {
   arrayMove,
@@ -19,7 +20,6 @@ import {
 import { SortableItem } from "@/components/sortable-item"
 import { DraggableItem } from "@/components/draggable-item"
 import { TaskItem } from "@/components/ui/task-item"
-import { DueDateHeader } from "@/components/ui/collapsible-header"
 import { useGroupedItems, getItemIdsFromGroups } from "@/lib/grouping"
 import { useFocusManager, type KeyboardActions } from "@/hooks/use-focus-manager"
 import { getDateForCategory, type DueDateCategory } from "@/lib/format"
@@ -27,6 +27,7 @@ import { sortItemsByPosition, isTodo, isSeparator } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import { useStore } from "@/lib/store"
 import type { Item, Todo } from "@/lib/types"
+import { PlayIcon } from "@phosphor-icons/react"
 
 type ListEntry =
   | { kind: "header"; key: string; label: string; isFirst: boolean; isNow: boolean }
@@ -560,16 +561,52 @@ interface DueDateGroupRowProps {
 }
 
 function DueDateGroupRow({ entry, isCollapsed, onToggle, onStartFocus }: DueDateGroupRowProps) {
+  const { setNodeRef, isOver } = useDroppable({
+    id: `drop-${entry.key}`,
+    data: { category: entry.key },
+    disabled: false,
+  })
+
   return (
-    <DueDateHeader
-      category={entry.key}
-      label={entry.label}
-      isCollapsed={isCollapsed}
-      onToggle={onToggle}
-      isFirst={entry.isFirst}
-      onStartFocus={entry.isNow ? onStartFocus : undefined}
-      className={cn(!entry.isFirst && "mt-6")}
-      labelClassName="text-sm"
-    />
+    <div
+      ref={setNodeRef}
+      className={cn(
+        "relative flex items-center gap-2",
+        entry.isFirst ? "mt-0" : "mt-8",
+        isOver && "rounded-md bg-muted/40"
+      )}
+    >
+      <div onClick={onToggle} className="shrink-0">
+        <TaskItem
+          todo={{
+            id: `header-${entry.key}`,
+            title: entry.label,
+            completed: false,
+            indent: 0,
+          }}
+          size="md"
+          mode="always"
+          className="text-lg font-semibold py-0 cursor-pointer hover:opacity-80 w-fit"
+          indentLevel={0}
+          showMetadata={false}
+          interactive={false}
+          isCollapsed={isCollapsed}
+          onCollapseToggle={onToggle}
+        />
+      </div>
+      {entry.isNow && onStartFocus && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation()
+            onStartFocus()
+          }}
+          className="flex items-center gap-1 rounded-full border px-2 py-1 text-xs font-medium text-primary hover:bg-muted bg-background shrink-0"
+        >
+          <PlayIcon className="h-3 w-3" weight="fill" />
+          Focus
+        </button>
+      )}
+    </div>
   )
 }
