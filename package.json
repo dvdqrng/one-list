@@ -1,9 +1,8 @@
 {
   "name": "one-list",
-  "version": "0.2.13",
+  "version": "0.2.14",
   "private": true,
   "main": "electron/main.js",
-  "packageManager": "pnpm@10.20.0",
   "packageManager": "pnpm@9.15.0",
   "pnpm": {
     "onlyBuiltDependencies": [
@@ -143,7 +142,6 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "concurrently": "^9.2.1",
-    "electron": "^39.2.2",
     "electron": "^34.0.0",
     "electron-builder": "^26.0.12",
     "electron-store": "^11.0.2",
