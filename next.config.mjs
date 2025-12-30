@@ -12,6 +12,7 @@ const nextConfig = (phase) => {
   const isElectronBuild =
     process.env.BUILD_TARGET === "electron" || lifecycleEvent.startsWith("electron:")
   const shouldUseStaticExport = !isDev && isElectronBuild
+  const buildTarget = shouldUseStaticExport ? "desktop" : "web"
 
   return {
     ...(shouldUseStaticExport
@@ -28,6 +29,9 @@ const nextConfig = (phase) => {
     },
     turbopack: {
       root: __dirname,
+    },
+    env: {
+      NEXT_PUBLIC_BUILD_TARGET: buildTarget,
     },
   }
 }
