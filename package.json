@@ -33,6 +33,7 @@
     "files": [
       "out/**/*",
       "electron/**/*",
+      "data/**/*",
       "package.json",
       ".env.local"
     ],
