@@ -1,20 +1,71 @@
 const { app, BrowserWindow, ipcMain, Tray, nativeImage } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
 const initSqlJs = require('sql.js');
-const { autoUpdater } = require('electron-updater');
 const OpenAI = require('openai');
-function loadBundledJson(relativePath, fallbackValue) {
-  const resolvedPath = path.resolve(__dirname, relativePath);
+
+// Check if running as Mac App Store build
+const isMAS = process.mas === true;
+
+// Only load auto-updater for non-MAS builds (App Store handles updates)
+let autoUpdater = null;
+if (!isMAS) {
+  autoUpdater = require('electron-updater').autoUpdater;
+}
+
+// Debug logging to file
+const debugLogPath = path.join(os.tmpdir(), 'one-list-debug.log');
+function debugLog(message) {
+  const timestamp = new Date().toISOString();
+  const logLine = `[${timestamp}] ${message}\n`;
   try {
-    if (fs.existsSync(resolvedPath)) {
-      const raw = fs.readFileSync(resolvedPath, 'utf8');
-      return JSON.parse(raw);
-    }
-    console.warn(`Default file not found at ${resolvedPath}. Using fallback.`);
-  } catch (error) {
-    console.warn(`Failed to load ${relativePath}:`, error.message);
+    fs.appendFileSync(debugLogPath, logLine);
+  } catch (e) {
+    // Ignore write errors
   }
+  console.log(message);
+}
+
+debugLog('=== App starting ===');
+debugLog(`__dirname: ${__dirname}`);
+debugLog(`app.getAppPath(): ${app.getAppPath()}`);
+debugLog(`process.resourcesPath: ${process.resourcesPath}`);
+
+function loadBundledJson(relativePath, fallbackValue) {
+  debugLog(`loadBundledJson called with: ${relativePath}`);
+
+  // Convert relative path like '../data/file.json' to 'data/file.json'
+  const normalizedPath = relativePath.replace(/^\.\.\//, '');
+
+  // Try multiple locations for bundled JSON files
+  const possiblePaths = [
+    path.resolve(__dirname, relativePath),  // Development: relative to electron folder
+    path.join(app.getAppPath(), normalizedPath),  // Production: inside asar bundle
+  ];
+
+  // Add resources path if available (for extraResources)
+  if (process.resourcesPath) {
+    possiblePaths.push(path.join(process.resourcesPath, normalizedPath));
+  }
+
+  debugLog(`Trying paths: ${JSON.stringify(possiblePaths)}`);
+
+  for (const resolvedPath of possiblePaths) {
+    try {
+      const exists = fs.existsSync(resolvedPath);
+      debugLog(`  ${resolvedPath} exists: ${exists}`);
+      if (exists) {
+        const raw = fs.readFileSync(resolvedPath, 'utf8');
+        debugLog(`  Successfully loaded from: ${resolvedPath}`);
+        return JSON.parse(raw);
+      }
+    } catch (error) {
+      debugLog(`  Error loading from ${resolvedPath}: ${error.message}`);
+    }
+  }
+
+  debugLog(`Using fallback for ${relativePath}`);
   return fallbackValue;
 }
 
@@ -726,56 +777,71 @@ async function migrateToItemsTable() {
 }
 
 // ========== Auto-Updater Configuration ==========
+// Note: Auto-updater is disabled for Mac App Store builds (App Store handles updates)
 
-// Configure auto-updater
-autoUpdater.autoDownload = false; // Don't auto-download, ask user first
-autoUpdater.autoInstallOnAppQuit = true; // Install when app quits
+if (autoUpdater) {
+  // Configure auto-updater (only for non-MAS builds)
+  autoUpdater.autoDownload = false; // Don't auto-download, ask user first
+  autoUpdater.autoInstallOnAppQuit = true; // Install when app quits
 
-// Auto-updater event handlers
-autoUpdater.on('checking-for-update', () => {
-  console.log('Checking for updates...');
-  if (mainWindow) {
-    mainWindow.webContents.send('checking-for-update');
-  }
-});
+  // Auto-updater event handlers
+  autoUpdater.on('checking-for-update', () => {
+    console.log('Checking for updates...');
+    if (mainWindow) {
+      mainWindow.webContents.send('checking-for-update');
+    }
+  });
 
-autoUpdater.on('update-available', (info) => {
-  console.log('Update available:', info.version);
-  if (mainWindow) {
-    mainWindow.webContents.send('update-available', info);
-  }
-});
+  autoUpdater.on('update-available', (info) => {
+    console.log('Update available:', info.version);
+    if (mainWindow) {
+      mainWindow.webContents.send('update-available', info);
+    }
+  });
 
-autoUpdater.on('update-not-available', (info) => {
-  console.log('No updates available');
-  if (mainWindow) {
-    mainWindow.webContents.send('update-not-available', info);
-  }
-});
+  autoUpdater.on('update-not-available', (info) => {
+    console.log('No updates available');
+    if (mainWindow) {
+      mainWindow.webContents.send('update-not-available', info);
+    }
+  });
 
-autoUpdater.on('error', (err) => {
-  console.error('Auto-updater error:', err);
-  if (mainWindow) {
-    mainWindow.webContents.send('update-error', err.message);
-  }
-});
+  autoUpdater.on('error', (err) => {
+    console.error('Auto-updater error:', err);
+    if (mainWindow) {
+      mainWindow.webContents.send('update-error', err.message);
+    }
+  });
 
-autoUpdater.on('download-progress', (progressObj) => {
-  console.log(`Download progress: ${progressObj.percent}%`);
-  if (mainWindow) {
-    mainWindow.webContents.send('download-progress', progressObj);
-  }
-});
+  autoUpdater.on('download-progress', (progressObj) => {
+    console.log(`Download progress: ${progressObj.percent}%`);
+    if (mainWindow) {
+      mainWindow.webContents.send('download-progress', progressObj);
+    }
+  });
 
-autoUpdater.on('update-downloaded', (info) => {
-  console.log('Update downloaded:', info.version);
-  if (mainWindow) {
-    mainWindow.webContents.send('update-downloaded', info);
-  }
-});
+  autoUpdater.on('update-downloaded', (info) => {
+    console.log('Update downloaded:', info.version);
+    if (mainWindow) {
+      mainWindow.webContents.send('update-downloaded', info);
+    }
+  });
+}
 
 // IPC handlers for update actions
 ipcMain.handle('check-for-updates', async () => {
+  // For MAS builds, updates are handled by the App Store
+  if (isMAS) {
+    console.log('Update check skipped - Mac App Store handles updates');
+    if (mainWindow) {
+      mainWindow.webContents.send('update-not-available', {
+        version: app.getVersion(),
+        message: 'Updates are handled by the Mac App Store'
+      });
+    }
+    return null;
+  }
+
   if (process.env.NODE_ENV === 'development') {
     console.log('Update check requested in development mode - simulating...');
     if (mainWindow) {
@@ -799,6 +865,9 @@ ipcMain.handle('check-for-updates', async () => {
 });
 
 ipcMain.handle('download-update', async () => {
+  if (isMAS || !autoUpdater) {
+    throw new Error('Updates are handled by the Mac App Store');
+  }
   try {
     return await autoUpdater.downloadUpdate();
   } catch (error) {
@@ -808,6 +877,9 @@ ipcMain.handle('download-update', async () => {
 });
 
 ipcMain.handle('install-update', () => {
+  if (isMAS || !autoUpdater) {
+    throw new Error('Updates are handled by the Mac App Store');
+  }
   autoUpdater.quitAndInstall();
 });
 
@@ -934,8 +1006,8 @@ app.whenReady().then(async () => {
   createWindow();
   createTray();
 
-  // Check for updates in production
-  if (process.env.NODE_ENV !== 'development') {
+  // Check for updates in production (skip for MAS builds - App Store handles updates)
+  if (process.env.NODE_ENV !== 'development' && autoUpdater && !isMAS) {
     setTimeout(() => {
       autoUpdater.checkForUpdates();
     }, 3000); // Check after 3 seconds to let the app fully load

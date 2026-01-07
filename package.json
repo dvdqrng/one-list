@@ -22,6 +22,8 @@
     "electron:dev": "unset ELECTRON_RUN_AS_NODE && NODE_ENV=development electron .",
     "electron:build": "next build && electron-builder",
     "electron:build:mac": "next build && electron-builder --mac",
+    "electron:build:mac:mas": "next build && electron-builder --mac mas",
+    "electron:build:mac:mas-dev": "next build && electron-builder --mac mas-dev",
     "electron:build:win": "next build && electron-builder --win",
     "electron:build:linux": "next build && electron-builder --linux",
     "export": "next build && next export",
@@ -48,7 +50,26 @@
         "dmg",
         "zip"
       ],
-      "identity": null
+      "identity": "Apple Development: DAVID QUIRING (P3R5K5B9D8)",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.inherit.plist",
+      "extendInfo": {
+        "NSMicrophoneUsageDescription": "One List uses the microphone to transcribe voice notes into tasks.",
+        "LSMinimumSystemVersion": "10.15"
+      }
+    },
+    "mas": {
+      "category": "public.app-category.productivity",
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.inherit.plist",
+      "hardenedRuntime": false,
+      "provisioningProfile": "build/embedded.provisionprofile",
+      "extendInfo": {
+        "NSMicrophoneUsageDescription": "One List uses the microphone to transcribe voice notes into tasks.",
+        "LSMinimumSystemVersion": "10.15"
+      }
     },
     "win": {
       "icon": "assets/icon.ico",
@@ -63,11 +84,6 @@
         "AppImage",
         "deb"
       ]
-    },
-    "publish": {
-      "provider": "github",
-      "owner": "dvdqrng",
-      "repo": "one-list"
     }
   },
   "dependencies": {

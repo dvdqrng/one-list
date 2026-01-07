@@ -281,8 +281,9 @@ export function TodoApp() {
           if (columnId === "uncategorized") return {}
           return { category: columnId }
         case "project":
-          if (columnId === "no-project") return {}
-          return { project: columnId }
+          // For project grouping, we can't easily add to a specific project from kanban
+          // since projects are determined by position and indent hierarchy
+          return {}
         default:
           return {}
       }
@@ -290,7 +291,7 @@ export function TodoApp() {
 
     // Create the todo with initial data already set - this ensures it appears in the correct column immediately
     const initialData = getInitialDataForColumn()
-    insertItemAfter(null, 'todo', initialData)
+    insertItemAfter(null, initialData)
     // Note: The kanban view will auto-detect the new empty-title todo and start inline editing
   }, [insertItemAfter, kanbanGroupBy])
 

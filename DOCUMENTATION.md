@@ -4,7 +4,7 @@ A sophisticated cross-platform todo application built with **Next.js 16 + Electr
 
 ---
 
-## 🏗️ Architecture Summary
+## Architecture Summary
 
 ```
 ┌─────────────────────────────────────────────────────────┐
@@ -30,7 +30,7 @@ A sophisticated cross-platform todo application built with **Next.js 16 + Electr
 
 ---
 
-## 📁 Project Structure
+## Project Structure
 
 ```
 one-list/
@@ -38,54 +38,75 @@ one-list/
 │   ├── api/                      # API routes (server-side)
 │   │   ├── process-todo-text/    # AI text processing for todos
 │   │   ├── find-similar-tasks/   # Task deduplication/merge suggestions
-│   │   └── transcribe/           # Audio transcription via Whisper
+│   │   ├── transcribe/           # Audio transcription via Whisper
+│   │   ├── enrich-todos/         # Batch todo enrichment endpoint
+│   │   ├── agent-prompts/        # Agent system prompts management
+│   │   └── agent-config/         # OpenAI API key management
 │   ├── page.tsx                  # Main entry point
 │   ├── layout.tsx                # Root layout with theme provider
 │   └── globals.css               # Global styles
 ├── components/                   # React components
+│   ├── layout/                   # Application layout components
+│   │   ├── main-layout.tsx       # Main layout wrapper
+│   │   ├── main-sidebar.tsx      # Navigation sidebar
+│   │   ├── sidebar.tsx           # Sidebar utilities
+│   │   ├── theme-switcher.tsx    # Theme toggle component
+│   │   ├── user-button.tsx       # User menu button
+│   │   └── user-profile.tsx      # User profile display
 │   ├── todo-app.tsx              # Main app container (orchestrator)
 │   ├── todo-text-editor.tsx      # List view with drag-and-drop
 │   ├── todo-kanban-view.tsx      # Kanban board view
 │   ├── todo-input.tsx            # AI input and voice recording interface
 │   ├── todo-sidebar.tsx          # Detail sidebar and category manager
+│   ├── todo-list.tsx             # Standalone todo list component
 │   ├── changelog-dialog.tsx      # AI-proposed changes review interface
-│   ├── merge-button.tsx          # Duplicate detection/merge trigger
 │   ├── focus-mode-overlay.tsx    # Distraction-free focus timer UI
 │   ├── draggable-item.tsx        # Drag handle wrapper
 │   ├── sortable-item.tsx         # dnd-kit sortable wrapper
 │   ├── theme-provider.tsx        # next-themes integration
 │   ├── update-notifier.tsx       # Auto-update notifications (Electron)
+│   ├── update-dialog.tsx         # Update notification dialog
 │   └── ui/                       # Radix UI component library
-│       ├── task-item.tsx         # Reusable todo/title renderer
+│       ├── task-item.tsx         # Reusable todo renderer
 │       ├── kanban.tsx            # Kanban column/card components
 │       ├── collapsible-header.tsx # Group headers for grouping
 │       ├── metadata-badges.tsx   # Priority/category badges
+│       ├── avatar.tsx            # Avatar component
+│       ├── sidebar.tsx           # Sidebar UI primitives
 │       └── [20+ other UI components]
 ├── hooks/                        # Custom React hooks
 │   ├── use-focus-manager.ts      # Unified focus/navigation for lists
 │   ├── use-focus-timer.ts        # Focus timer state + Electron sync
-│   └── use-mobile.ts             # Responsive design detection
+│   ├── use-mobile.ts             # Responsive design detection
+│   ├── use-sidebar.ts            # Sidebar state hook
+│   └── use-main-sidebar-store.ts # Main sidebar collapse state (Zustand)
 ├── lib/                          # Core business logic
 │   ├── store.ts                  # Zustand state management (main app state)
 │   ├── types.ts                  # TypeScript type definitions
-│   ├── electron/
-│   │   └── database.ts           # Database abstraction layer (Electron/web)
-│   ├── electron-api.ts           # Type-safe Electron IPC interface
-│   ├── api-bridge.ts             # Client-side API request wrapper
-│   ├── process-todos.ts          # AI text-to-todo conversion
-│   ├── process-batch-todos.ts    # Batch processing for efficiency
-│   ├── process-single-todo.ts    # Single todo enhancement
-│   ├── find-similar-tasks.ts     # Semantic task deduplication
-│   ├── ai-queue-manager.ts       # Queue & batch system for AI calls
-│   ├── grouping.ts               # Centralized grouping engine (5 strategies)
+│   ├── grouping.ts               # Centralized grouping engine
 │   ├── format.ts                 # Date formatting and categorization
 │   ├── utils.ts                  # Utility functions (cn for Tailwind merge)
+│   ├── electron-api.ts           # Type-safe Electron IPC interface
+│   ├── api-bridge.ts             # Client-side API request wrapper
+│   ├── find-similar-tasks.ts     # Semantic task deduplication
+│   ├── ai/                       # AI processing (consolidated)
+│   │   ├── index.ts              # Central export point
+│   │   ├── defaults.ts           # Default AI configuration
+│   │   ├── server.ts             # Server-side AI utilities
+│   │   ├── process-todos.ts      # AI text-to-todo conversion
+│   │   ├── process-batch-todos.ts # Batch processing for efficiency
+│   │   ├── process-single-todo.ts # Single todo enhancement
+│   │   ├── ai-queue-manager.ts   # Queue & batch system for AI calls
+│   │   ├── agent-prompts.ts      # Agent prompts management
+│   │   └── agent-config.ts       # Agent configuration management
+│   ├── electron/
+│   │   └── database.ts           # Database abstraction layer (Electron/web)
 │   └── hooks/
 │       └── use-debounced-callback.ts
-├── styles/
-│   └── globals.css               # Global Tailwind styles
-├── types/
-│   └── electron.d.ts             # Electron API TypeScript definitions
+├── types/                        # Additional TypeScript definitions
+│   ├── electron.d.ts             # Electron API TypeScript definitions
+│   ├── agent-prompts.ts          # Agent prompt configuration types
+│   └── agent-config.ts           # Agent API configuration types
 ├── package.json                  # Project dependencies and build config
 ├── tsconfig.json                 # TypeScript configuration
 ├── next.config.mjs               # Next.js configuration
@@ -96,44 +117,133 @@ one-list/
 
 ---
 
-## 📁 Key Files & Purposes
+## Key Files & Purposes
 
 | File | Purpose |
 |------|---------|
 | `app/page.tsx` | Entry point - renders `<TodoApp />` |
 | `components/todo-app.tsx` | Main orchestrator - loads data, manages views |
 | `components/todo-text-editor.tsx` | List view with drag-drop, inline editing |
-| `components/todo-kanban-view.tsx` | Kanban board with 5 grouping strategies |
+| `components/todo-kanban-view.tsx` | Kanban board with grouping strategies |
 | `components/todo-input.tsx` | AI natural language input + voice recording |
 | `components/todo-sidebar.tsx` | Detail panel for selected todo |
 | `components/changelog-dialog.tsx` | Review AI-proposed changes before applying |
+| `components/layout/main-layout.tsx` | Application layout wrapper |
+| `components/layout/main-sidebar.tsx` | Navigation sidebar |
 | `lib/store.ts` | **Zustand state management** - all app state |
 | `lib/types.ts` | TypeScript definitions for Item, Todo, etc. |
 | `lib/grouping.ts` | Centralized grouping engine |
+| `lib/ai/index.ts` | Consolidated AI processing exports |
 | `lib/electron/database.ts` | Database abstraction (Electron/Web) |
 | `hooks/use-focus-manager.ts` | Keyboard navigation for lists |
 
 ---
 
-## 🔧 Tech Stack
+## Design System
 
-| Category | Technologies |
-|----------|-------------|
-| **Framework** | Next.js 16, React 19, TypeScript |
-| **State** | Zustand with persistence |
-| **UI** | Radix UI, shadcn/ui, Tailwind CSS 4 |
-| **Drag & Drop** | @dnd-kit (core, sortable, utilities) |
-| **AI** | Vercel AI SDK, OpenAI (gpt-4o-mini, Whisper) |
-| **Desktop** | Electron 39, auto-updates |
-| **Forms** | React Hook Form, Zod validation |
-| **Animation** | Motion (framer-motion) |
-| **Icons** | Lucide React, Phosphor Icons |
-| **Date** | date-fns, React Day Picker |
-| **Charts** | Recharts |
+One List uses a centrally controlled semantic color system defined in `app/globals.css`. All colors use CSS custom properties with OKLCH color space for perceptual uniformity, supporting both light and dark modes.
+
+### Color Palette
+
+| Token | Usage | Light Mode | Dark Mode |
+|-------|-------|------------|-----------|
+| `--primary` | Brand/accent | Blue `oklch(0.62 0.23 250)` | Blue `oklch(0.62 0.23 250)` |
+| `--destructive` | Error/danger | Red `oklch(0.577 0.245 27)` | Red `oklch(0.5 0.2 27)` |
+| `--warning` | Warning/timeout | Orange `oklch(0.65 0.18 60)` | Orange `oklch(0.7 0.2 70)` |
+| `--background` | Page background | Near white `oklch(0.98 0 0)` | Dark `oklch(0.12 0 0)` |
+| `--foreground` | Primary text | Dark `oklch(0.15 0 0)` | Light `oklch(0.95 0 0)` |
+| `--muted` | Muted backgrounds | Light gray `oklch(0.95 0 0)` | Dark gray `oklch(0.2 0 0)` |
+| `--card` | Card backgrounds | White `oklch(1 0 0)` | Dark `oklch(0.16 0 0)` |
+
+### Semantic Color Classes
+
+**Text Colors:**
+- `text-foreground` - Primary text
+- `text-muted-foreground` - Secondary/disabled text
+- `text-primary` - Brand/accent text
+- `text-destructive` - Error/danger text
+- `text-warning` - Warning text
+
+**Background Colors:**
+- `bg-background` - Page background
+- `bg-card` - Card background
+- `bg-primary` - Brand/accent background
+- `bg-secondary` - Secondary background
+- `bg-muted` - Muted/disabled background
+- `bg-destructive` - Error/danger background
+
+**Foreground Pairs:**
+When using colored backgrounds, use corresponding foreground:
+- `bg-primary` → `text-primary-foreground`
+- `bg-secondary` → `text-secondary-foreground`
+- `bg-destructive` → `text-destructive-foreground`
+- `bg-warning` → `text-warning-foreground`
+
+### Typography
+
+| Token | Font |
+|-------|------|
+| `--font-sans` | Geist |
+| `--font-mono` | Geist Mono |
+
+### Spacing & Radius
+
+| Token | Value |
+|-------|-------|
+| `--radius` | 0.75rem (12px) |
+| `--radius-sm` | calc(var(--radius) - 4px) |
+| `--radius-md` | calc(var(--radius) - 2px) |
+| `--radius-lg` | var(--radius) |
+| `--radius-xl` | calc(var(--radius) + 4px) |
+
+### Sidebar-Specific Colors
+
+Dedicated tokens for sidebar styling:
+- `--sidebar` / `--sidebar-foreground`
+- `--sidebar-primary` / `--sidebar-primary-foreground`
+- `--sidebar-accent` / `--sidebar-accent-foreground`
+- `--sidebar-border` / `--sidebar-ring`
+
+### Component Variants
+
+**Button variants:** `default`, `destructive`, `secondary`, `outline`, `ghost`
+
+**Badge variants:** `default`, `destructive`, `secondary`, `outline`
+
+### Design Guidelines
+
+**DO use semantic colors:**
+- `text-warning` for warning messages
+- `bg-primary` for primary actions
+- `text-destructive` for errors
+
+**DON'T use hardcoded colors:**
+- ~~`text-orange-500`~~
+- ~~`bg-blue-600`~~
+- ~~`#FF5733`~~
 
 ---
 
-## 📊 Data Model
+## Tech Stack
+
+| Category | Technologies |
+|----------|-------------|
+| **Framework** | Next.js 16.0.7, React 19.2.0, TypeScript 5 |
+| **State** | Zustand 5.0.9 with persistence |
+| **UI** | Radix UI, shadcn/ui, Tailwind CSS 4.1.9 |
+| **Drag & Drop** | @dnd-kit (core, sortable, utilities) |
+| **AI** | Vercel AI SDK, OpenAI (gpt-4o-mini, Whisper) |
+| **Desktop** | Electron 34, auto-updates |
+| **Forms** | React Hook Form 7.60, Zod 3.25 validation |
+| **Animation** | Motion 12.23 (framer-motion) |
+| **Icons** | Lucide React 0.454, Phosphor Icons 2.1 |
+| **Date** | date-fns 4.1, React Day Picker 9.8 |
+| **Charts** | Recharts 2.15 |
+| **Layout** | react-resizable-panels 2.1 |
+
+---
+
+## Data Model
 
 ### Core Item Type
 
@@ -142,28 +252,26 @@ The unified **Item** type is the single source of truth for all entities:
 ```typescript
 interface Item {
   id: string
-  type: "todo" | "title" | "separator"    // ItemType
-  position: number                         // Ordering
-  parentId?: string                        // For sub-tasks/projects
+  type: "todo" | "separator"           // ItemType (title removed)
+  position: number                      // Ordering
+  parentId?: string                     // For sub-tasks/projects
 
   // Todo-specific
   title?: string
   details?: string
   completed?: boolean
-  status?: "due" | "in-progress" | "done"
+  status?: "due" | "in-progress" | "done" | "archived"
   priority?: "low" | "medium" | "high"
-  dueDate?: string                         // ISO format
-  category?: string                        // Tag
-  indent?: number                          // Nesting level
-  isNow?: boolean                          // Focus group marker
+  dueDate?: string                      // ISO format
+  category?: string                     // Tag
+  indent?: number                       // Nesting level
+  isNow?: boolean                       // Focus group marker
   aiProcessingStatus?: "pending" | "processing" | "enhanced" | "failed"
-
-  // Title-specific
-  text?: string
 
   // Metadata
   createdAt: string
   updatedAt?: string
+  completedAt?: string                  // When completed
 }
 ```
 
@@ -198,7 +306,7 @@ interface ChangelogSession {
 ### Grouping Types
 
 ```typescript
-type GroupBy = "position" | "dueDate" | "priority" | "category" | "project" | "status"
+type ListGroupBy = "dueDate" | "project"
 type KanbanGroupBy = "dueDate" | "priority" | "category" | "project" | "status"
 type ViewMode = "list" | "kanban"
 
@@ -218,7 +326,7 @@ interface ItemGroup {
 
 ---
 
-## 🌐 API Routes
+## API Routes
 
 ### `/api/process-todo-text`
 
@@ -308,13 +416,68 @@ interface ItemGroup {
 
 ---
 
-## 🗄️ State Management
+### `/api/enrich-todos`
+
+**Purpose:** Batch enrich short todos with metadata
+
+**Method:** POST
+
+**Request Body:**
+```typescript
+{ todos: Todo[] }
+```
+
+**Response:**
+```typescript
+{ enrichedTodos: Todo[] }
+```
+
+**Details:**
+- Uses `processBatchTodos` from `lib/ai/server`
+- Adds priority, due dates, categories to sparse todos
+- Part of the AI queue system for efficient processing
+
+---
+
+### `/api/agent-prompts`
+
+**Purpose:** Manage AI agent system prompts
+
+**Methods:** GET, PUT
+
+**GET Response:**
+```typescript
+{
+  processTodoText: string
+  processBatchTodos: string
+  processSingleTodo: string
+  findSimilarTasks: string
+}
+```
+
+**PUT Request:** Same structure to update prompts
+
+---
+
+### `/api/agent-config`
+
+**Purpose:** Manage OpenAI API key configuration
+
+**Methods:** GET, PUT
+
+**Details:**
+- Allows manual API key management
+- Used by the agent settings dashboard
+
+---
+
+## State Management
 
 ### Zustand Store (`lib/store.ts`)
 
 **Single Source of Truth for:**
-- All items (todos, titles, separators) - `items: Item[]`
-- Selection state - `selectedTodoId`, `selectedTitleId`
+- All items (todos, separators) - `items: Item[]`
+- Selection state - `activeItemId`, `pendingFocusId`
 - UI preferences - `viewMode`, `kanbanGroupBy`, `showMetadata`, `showCompleted`, `listGroupBy`
 - Focus mode state - `isFocusMode`, `focusTimeRemaining`, `focusTimerRunning`, `distractionNotes`
 - Changelog/AI state - `changelogSession`, `showChangelog`
@@ -323,6 +486,7 @@ interface ItemGroup {
 - Uses Zustand `persist` middleware
 - Only persists UI preferences (not items - handled by database)
 - localStorage key: `"todo-app-ui-preferences"`
+- Version 2 with migration from old `listGroupBy: "position"` → `"project"`
 
 **Key Actions:**
 
@@ -335,32 +499,38 @@ interface ItemGroup {
 | `deleteItem()` | Delete an item |
 | `toggleItem()` | Toggle todo completion |
 | `reorderItems()` | Update positions after drag |
-| `selectTodo()` | Select a todo for sidebar |
+| `setActiveItem()` | Set active item (selection) |
+| `setActiveItemAndFocus()` | Set active item and schedule focus |
+| `setPendingFocus()` | Schedule focus for next render |
+| `clearPendingFocus()` | Clear scheduled focus |
 | `applyChanges()` | Apply AI-proposed changes |
 | `setFocusMode()` | Enter/exit focus mode |
 | `toggleNow()` | Toggle isNow flag on todo |
+| `clearNowItems()` | Clear all "now" items |
+| `archiveOldDoneTasks()` | Auto-archive completed tasks (24h) |
+| `insertItemAfter()` | Insert new item after specified item |
 
 **Derived State (Hooks):**
 
 | Hook | Purpose |
 |------|---------|
-| `useTodos()` | Filtered, converted todo items |
-| `useTitles()` | Title items only |
+| `useTodos()` | Filtered, converted todo items (excludes archived) |
+| `useActiveItem()` | Current active/selected todo |
+| `useSelectedTodo()` | Alias for useActiveItem (compatibility) |
 | `useSortedItems()` | Items sorted by position |
-| `useSelectedTodo()` | Current selected todo |
 | `useCategories()` | Unique categories |
 | `useNowTodos()` | Todos marked with isNow |
 
 ---
 
-## 🎯 Grouping System
+## Grouping System
 
-The centralized grouping engine (`lib/grouping.ts`) supports 5 strategies:
+The centralized grouping engine (`lib/grouping.ts`) supports multiple strategies:
 
-### 1. Position (Default)
-- Items in document order
-- Titles create collapsible subgroups
-- Separators create boundaries
+### 1. Project (Default for List View)
+- Groups todos by indent level and position
+- Creates visual hierarchy based on indentation
+- Collapsible sections
 
 ### 2. Due Date
 Categories: `now`, `overdue`, `today`, `tomorrow`, `this-week`, `later`, `no-date`
@@ -373,16 +543,12 @@ Categories: `high`, `medium`, `low`, `none`
 - Colors: red, amber, green, gray
 
 ### 4. Status
-Categories: `due`, `in-progress`, `done`
+Categories: `due`, `in-progress`, `done`, `archived`
 - Derived from `completed` flag if `status` not set
 
 ### 5. Category (Tags)
 - Dynamic columns from unique category values
 - "Uncategorized" group for todos without category
-
-### 6. Project (Titles)
-- Groups todos by title above them
-- "No Project" group for ungrouped todos
 
 **API:**
 ```typescript
@@ -392,7 +558,7 @@ function useGroupedItems(items: Item[], groupBy: GroupBy, options?: GroupingOpti
 
 ---
 
-## 🎨 Component Hierarchy
+## Component Hierarchy
 
 ### TodoApp (Main Orchestrator)
 - Loads initial data via `loadItems()`
@@ -400,11 +566,18 @@ function useGroupedItems(items: Item[], groupBy: GroupBy, options?: GroupingOpti
 - Handles focus mode timer
 - Coordinates AI input, changelog, and merge operations
 
+### Layout Components
+- **MainLayout** - Application shell with sidebar
+- **MainSidebar** - Navigation and quick actions
+- **ThemeSwitcher** - Light/dark mode toggle
+- **UserButton/UserProfile** - User information display
+
 ### TodoTextEditor (List View)
 - Uses `@dnd-kit` for drag-and-drop sorting
 - Groups items via `useGroupedItems`
 - Renders SortableItem wrappers containing TaskItem components
 - Supports inline editing and keyboard navigation
+- Accesses Zustand store directly for state
 
 ### TodoKanbanView (Board View)
 - Renders columns based on groupBy strategy
@@ -435,13 +608,13 @@ function useGroupedItems(items: Item[], groupBy: GroupBy, options?: GroupingOpti
 
 ---
 
-## 🔌 Database & Persistence
+## Database & Persistence
 
 ### Dual-Mode Architecture
 
 **Electron Mode:** Delegates to `window.electronDB` (IPC calls to main process)
 
-**Web Mode:** Falls back to `WebDatabase` (in-memory)
+**Web Mode:** Falls back to `WebDatabase` (in-memory with sql.js)
 
 ### API Interface
 
@@ -462,7 +635,7 @@ interface ElectronAPI {
   processTodoText(input: string, existingTodos: Todo[]): Promise<ProposedChange[]>
   findSimilarTasks(todos: Todo[]): Promise<ProposedChange[]>
 
-  // Auto-updates
+  // Auto-updates (non-MAS builds only)
   checkForUpdates(): Promise<void>
   downloadUpdate(): Promise<void>
   installUpdate(): Promise<void>
@@ -473,12 +646,18 @@ interface ElectronAPI {
   resumeFocusTimer(): Promise<{...}>
   resetFocusTimer(): Promise<{...}>
   getFocusState(): Promise<{isRunning: boolean; timeRemaining: number}>
+
+  // Agent Configuration
+  getAgentPrompts(): Promise<AgentPrompts>
+  setAgentPrompts(prompts: AgentPrompts): Promise<void>
+  getAgentConfig(): Promise<AgentConfig>
+  setAgentConfig(config: AgentConfig): Promise<void>
 }
 ```
 
 ---
 
-## 🪝 Custom Hooks
+## Custom Hooks
 
 ### `use-focus-manager.ts`
 Unified keyboard navigation for lists:
@@ -497,14 +676,23 @@ Focus mode timer management:
 ### `use-mobile.ts`
 Responsive design detection for mobile layouts
 
+### `use-sidebar.ts`
+Sidebar state management hook
+
+### `use-main-sidebar-store.ts`
+Zustand store for main sidebar collapse state:
+- `isCollapsed: boolean`
+- `toggle(): void`
+
 ---
 
-## ⚡ Key Features
+## Key Features
 
 ### Core Todo Management
 - Create, read, update, delete todos
-- Mark complete/incomplete
+- Mark complete/incomplete with timestamps
 - Drag-and-drop reordering
+- Auto-archive completed tasks after 24 hours
 - Undo/redo (via changelogSession)
 
 ### Metadata
@@ -513,9 +701,10 @@ Responsive design detection for mobile layouts
 - Category/tags
 - Details/notes
 - AI processing status
+- Completion timestamp
 
 ### View Modes
-- List view (document-based with titles/separators)
+- List view (document-based with indentation)
 - Kanban board (5 grouping strategies)
 
 ### AI Features
@@ -523,24 +712,27 @@ Responsive design detection for mobile layouts
 - Meeting transcript parsing
 - Duplicate detection & merge suggestions
 - Voice-to-todo (via transcription)
-- Agent system prompts dashboard (`/agent-settings`) for live editing
-- Manual OpenAI API key management from the same dashboard
+- Batch todo enrichment
+- Customizable agent system prompts
+- Manual OpenAI API key management
 
 ### Focus Mode
 - Distraction-free timer (25min Pomodoro default)
 - Darkened overlay
 - Capture distraction notes
 - Timer synced with Electron main process
+- "Now" items for focus prioritization
 
 ### Organization
 - Group by due date, priority, status, category, project
 - Collapse/expand groups
 - Hide completed todos
-- Multiple projects (via titles)
+- Indent-based hierarchy
 
 ### Cross-Platform
 - Web app (Vercel deployment)
 - Desktop app (Electron with auto-updates)
+- Mac App Store support (MAS builds)
 
 ### Theme
 - Light/dark mode (next-themes)
@@ -548,10 +740,10 @@ Responsive design detection for mobile layouts
 
 ---
 
-## 📦 Dependencies
+## Dependencies
 
 ### Core
-- `next` 16.0.0 - Full-stack React framework
+- `next` 16.0.7 - Full-stack React framework
 - `react` 19.2.0 - UI library
 - `typescript` 5.x - Type-safe JavaScript
 
@@ -579,15 +771,21 @@ Responsive design detection for mobile layouts
 - `@hookform/resolvers` 3.10.0 - Validation resolvers
 
 ### AI
-- `ai` - Vercel AI SDK
+- `ai` latest - Vercel AI SDK
 - `@ai-sdk/openai` 2.0.68 - OpenAI provider
 - `openai` 6.9.1 - Official OpenAI client
 
 ### Desktop
-- `electron` 39.2.2 - Desktop framework
+- `electron` 34.0.0 - Desktop framework
 - `electron-builder` 26.0.12 - App packaging
 - `electron-store` 11.0.2 - Persistent storage
 - `electron-updater` 6.6.2 - Auto-updates
+
+### Layout & UI
+- `react-resizable-panels` 2.1.7 - Resizable panel layout
+- `embla-carousel-react` 8.5.1 - Carousel component
+- `vaul` 0.9.9 - Drawer component
+- `tunnel-rat` 0.1.2 - Portal/modal management
 
 ### Utilities
 - `date-fns` 4.1.0 - Date manipulation
@@ -595,10 +793,13 @@ Responsive design detection for mobile layouts
 - `cmdk` 1.0.4 - Command menu
 - `sonner` 1.7.4 - Toast notifications
 - `motion` 12.23.25 - Animations
+- `sql.js` 1.13.0 - In-memory SQL database
+- `form-data` 4.0.5 - Form data handling
+- `node-fetch` 2.7.0 - Fetch polyfill
 
 ---
 
-## 🔄 Application Flow
+## Application Flow
 
 ```
 User Input (Text or Voice)
@@ -630,20 +831,24 @@ User Input (Text or Voice)
 
 ---
 
-## 🛠️ Development
+## Development
 
 ### Package Manager
-- **pnpm** 10.20.0+ (enforced via `packageManager` field)
+- **pnpm** 9.15.0 (enforced via `packageManager` field)
 
 ### Node Version
 - **Node.js** 20.0.0+
 
 ### Scripts
 ```bash
-pnpm dev          # Start Next.js dev server
-pnpm build        # Build for production
-pnpm electron:dev # Start Electron in dev mode
-pnpm electron:build:mac # Build macOS app
+pnpm dev              # Start Next.js dev server
+pnpm build            # Build for production
+pnpm electron:dev     # Start Electron in dev mode
+pnpm electron:build:mac       # Build macOS app (dmg + zip)
+pnpm electron:build:mac:mas   # Build Mac App Store version
+pnpm electron:build:win       # Build Windows app
+pnpm electron:build:linux     # Build Linux app
+pnpm dev:all          # Run Next.js + Electron concurrently
 ```
 
 ### Configuration Files
@@ -656,22 +861,24 @@ pnpm electron:build:mac # Build macOS app
 | `postcss.config.mjs` | Tailwind CSS setup |
 | `components.json` | shadcn/ui configuration |
 | `electron-builder.yml` | Electron build config |
+| `build/entitlements.*.plist` | macOS entitlements |
 
 ---
 
-## 🧹 Code Quality & Architecture Notes
+## Code Quality & Architecture Notes
 
 ### Recent Improvements
 
-1. **Consolidated `GroupBy` type** - Single definition in `lib/grouping.ts` (was duplicated in `types.ts`)
-2. **Simplified TaskItem API** - Removed deprecated `editable`, `onClick`, `onFocus`, `onMetadataClick` props. Use `mode` and `onSelect` instead.
-3. **Reduced boilerplate** - Removed unnecessary wrapper handlers in `todo-app.tsx`
-4. **Replaced boolean flags with explicit enums** for better code clarity:
-   - `hideCompleted: boolean` → `showCompleted: boolean` (positive naming, less cognitive load)
-   - `groupByDueDate: boolean` → `listGroupBy: ListGroupBy` (`"project" | "dueDate"`)
-5. **Removed @deprecated warnings** from `Todo`/`Title` types - they serve a valid purpose as view types for component props
-6. **TodoTextEditor now uses Zustand store directly** - Reduced from 13+ props to just `onStartFocus`. Component accesses store for `items`, `showMetadata`, `showCompleted`, `listGroupBy`, and all actions.
-7. **Consolidated AI files into `lib/ai/`** - All AI processing code now in one directory with clean re-exports via `lib/ai/index.ts`.
+1. **Unified Item Type** - Single `Item` type; "title" item type removed (backward-compatible conversion)
+2. **Simplified ItemType** - Now just `"todo" | "separator"`
+3. **Added `archived` status** - Todos can be archived after completion
+4. **Added `completedAt` field** - Tracks when todos were completed
+5. **Consolidated AI files into `lib/ai/`** - All AI processing code in one directory with clean re-exports
+6. **Added layout components** - New `components/layout/` directory for app shell
+7. **New hooks** - `use-sidebar.ts` and `use-main-sidebar-store.ts` for sidebar state
+8. **Unified selection** - `activeItemId` and `pendingFocusId` replace old selection model
+9. **Store version 2** - Migration from `listGroupBy: "position"` to `"project"`
+10. **Mac App Store support** - Conditional auto-updater loading for MAS builds
 
 ### TaskItem Mode System
 
@@ -708,12 +915,15 @@ focusSession: {
 } | null
 ```
 
+#### 2. moveToProject Placeholder
+The `moveToProject` action is currently a placeholder with a warning log. Full hierarchy-based implementation pending.
+
 ### Type System Guidelines
 
 1. **Use `Item` for storage/state** - Single source of truth
-2. **Use `Todo`/`Title` for component props** - Cleaner interfaces
-3. **Use type guards** - `isTodo()`, `isTitle()`, `isSeparator()`
-4. **Import `GroupBy` from `lib/grouping.ts`** - Not from `types.ts`
+2. **Use `Todo` for component props** - Cleaner interfaces
+3. **Use type guards** - `isTodo()`, `isSeparator()`
+4. **Import grouping types from `lib/types.ts`** - `ListGroupBy`, `KanbanGroupBy`
 
 ### File Organization
 
@@ -721,9 +931,16 @@ focusSession: {
 lib/
 ├── store.ts          # Zustand store (state + actions)
 ├── types.ts          # Core type definitions
-├── grouping.ts       # Grouping logic + GroupBy type
+├── grouping.ts       # Grouping logic
 ├── format.ts         # Date formatting utilities
 ├── utils.ts          # General utilities (cn)
+├── ai/               # AI processing (consolidated)
+│   ├── index.ts      # Central exports
+│   ├── defaults.ts   # Default configurations
+│   ├── server.ts     # Server-side utilities
+│   ├── process-*.ts  # Processing functions
+│   ├── ai-queue-manager.ts
+│   └── agent-*.ts    # Agent configuration
 └── electron/         # Electron-specific code
     └── database.ts   # DB abstraction
 ```
