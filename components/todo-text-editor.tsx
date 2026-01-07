@@ -363,7 +363,7 @@ export function TodoTextEditor({ onStartFocus }: TodoTextEditorProps) {
             dueDate: item.dueDate,
             category: item.category,
             aiProcessingStatus: item.aiProcessingStatus,
-            indent: 0,
+            indent: item.indent ?? 0,
           }}
           size="md"
           onStatusChange={(id, status) => {

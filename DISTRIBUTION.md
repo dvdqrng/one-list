@@ -50,6 +50,8 @@ pnpm electron:build:win    # Windows only
 pnpm electron:build:linux  # Linux only
 ```
 
+> **Note:** If you customize `electron-builder`'s `build.files` list, ensure `data/**/*` stays included so the default agent prompts and config ship inside the app bundle.
+
 ## Distribution Methods
 
 ### 1. GitHub Releases (Recommended)

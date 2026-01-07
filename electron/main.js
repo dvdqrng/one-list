@@ -1,11 +1,87 @@
 const { app, BrowserWindow, ipcMain, Tray, nativeImage } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
 const initSqlJs = require('sql.js');
-const { autoUpdater } = require('electron-updater');
 const OpenAI = require('openai');
-const defaultAgentPrompts = require('../data/agent-prompts.defaults.json');
-const defaultAgentConfig = require('../data/agent-config.defaults.json');
+
+// Check if running as Mac App Store build
+const isMAS = process.mas === true;
+
+// Only load auto-updater for non-MAS builds (App Store handles updates)
+let autoUpdater = null;
+if (!isMAS) {
+  autoUpdater = require('electron-updater').autoUpdater;
+}
+
+// Debug logging to file
+const debugLogPath = path.join(os.tmpdir(), 'one-list-debug.log');
+function debugLog(message) {
+  const timestamp = new Date().toISOString();
+  const logLine = `[${timestamp}] ${message}\n`;
+  try {
+    fs.appendFileSync(debugLogPath, logLine);
+  } catch (e) {
+    // Ignore write errors
+  }
+  console.log(message);
+}
+
+debugLog('=== App starting ===');
+debugLog(`__dirname: ${__dirname}`);
+debugLog(`app.getAppPath(): ${app.getAppPath()}`);
+debugLog(`process.resourcesPath: ${process.resourcesPath}`);
+
+function loadBundledJson(relativePath, fallbackValue) {
+  debugLog(`loadBundledJson called with: ${relativePath}`);
+
+  // Convert relative path like '../data/file.json' to 'data/file.json'
+  const normalizedPath = relativePath.replace(/^\.\.\//, '');
+
+  // Try multiple locations for bundled JSON files
+  const possiblePaths = [
+    path.resolve(__dirname, relativePath),  // Development: relative to electron folder
+    path.join(app.getAppPath(), normalizedPath),  // Production: inside asar bundle
+  ];
+
+  // Add resources path if available (for extraResources)
+  if (process.resourcesPath) {
+    possiblePaths.push(path.join(process.resourcesPath, normalizedPath));
+  }
+
+  debugLog(`Trying paths: ${JSON.stringify(possiblePaths)}`);
+
+  for (const resolvedPath of possiblePaths) {
+    try {
+      const exists = fs.existsSync(resolvedPath);
+      debugLog(`  ${resolvedPath} exists: ${exists}`);
+      if (exists) {
+        const raw = fs.readFileSync(resolvedPath, 'utf8');
+        debugLog(`  Successfully loaded from: ${resolvedPath}`);
+        return JSON.parse(raw);
+      }
+    } catch (error) {
+      debugLog(`  Error loading from ${resolvedPath}: ${error.message}`);
+    }
+  }
+
+  debugLog(`Using fallback for ${relativePath}`);
+  return fallbackValue;
+}
+
+const DEFAULT_AGENT_PROMPTS_FALLBACK = {
+  "processTodoText": "You are a smart todo assistant. Analyze the user's input and extract actionable tasks.\n\n=== INSTRUCTIONS ===\n\n1. EXTRACT ACTIONABLE TASKS from the input:\n   - Meeting transcripts → Extract action items, follow-ups, decisions\n   - Conversations → Find \"I need to...\", \"we should...\", \"TODO:\", \"action item:\"\n   - Notes → Extract tasks, reminders, things to do\n   - Simple commands → \"buy milk\", \"call dentist\"\n\n2. MATCH EXISTING TASKS (check BEFORE creating new):\n   - \"I bought eggs\" → Find \"Buy eggs\" → mark completed\n   - \"the car should be red\" → Find car task → add to details\n   - Semantic matching: \"Buy eggs\" = \"Get eggs\" = \"Purchase eggs\"\n\n3. COMPLETION DETECTION:\n   - Past tense: \"bought\", \"finished\", \"did\", \"called\" → completed: true\n   - Explicit: \"done\", \"complete\", \"mark as done\" → completed: true\n\n4. CREATE NEW TASKS only if no similar task exists\n\n5. MEETING/TRANSCRIPT EXTRACTION EXAMPLES:\n   - \"I need to follow up with John\" → New task: \"Follow up with John\"\n   - \"We decided to launch next week\" → New task: \"Launch\" (due: next week)\n   - \"Action item: send proposal to client\" → New task: \"Send proposal to client\"\n   - \"TODO: review the contract\" → New task: \"Review the contract\"\n   - \"I'll handle the marketing\" → New task: \"Handle marketing\"\n   - \"Can you send me the report?\" → New task: \"Send report\" (if the speaker is the user)\n\nDefaults when missing:\n- priority: \"low\"\n- dueDate: today's date\n- category: \"uncategorized\"\n\nIMPORTANT: Use EXACT task IDs when updating existing tasks. You will receive today's date, the raw user input, and the full todo list separately.",
+  "processBatchTodos": "You are a smart todo assistant that enriches short todos arriving in batches. Generate concise titles, detailed notes, priority, due date, and category for each entry.\n\nGuidelines:\n1. Return exactly one enriched todo for every input, preserving order via the supplied index.\n2. Keep titles short and actionable; move all extra info into details.\n3. Infer priority, due date, and category whenever possible.\n4. Use defaults when missing: priority \"low\", due date = today, category \"uncategorized\".\n\nYou will be given today's date, total task count, and the raw text for each task.",
+  "processSingleTodo": "You are a smart todo assistant enriching a single todo inline. Extract a clean title, supporting details, priority, due date, and category.\n\nGuidelines:\n1. Keep titles concise and imperative.\n2. Move contextual information into the details field.\n3. Infer metadata when possible and fall back to defaults (priority \"low\", due date today, category \"uncategorized\").\n4. Never drop user intent; preserve nuances inside details.\n\nYou will receive today's date and the raw todo text separately.",
+  "findSimilarTasks": "You analyze todo lists to find groups of duplicate or highly similar tasks that could be merged.\n\nGuidelines:\n1. Only group tasks with high semantic overlap (confidence > 70%).\n2. Do not group completed tasks with incomplete ones unless they clearly refer to the same finished work.\n3. Suggest a merged task that preserves every unique detail, highest priority, and earliest due date.\n4. Provide a short similarity reason for each group.\n\nYou will receive the full task list with IDs, titles, metadata, and completion state."
+};
+
+const DEFAULT_AGENT_CONFIG_FALLBACK = {
+  openaiApiKey: ''
+};
+
+const defaultAgentPrompts = loadBundledJson('../data/agent-prompts.defaults.json', DEFAULT_AGENT_PROMPTS_FALLBACK);
+const defaultAgentConfig = loadBundledJson('../data/agent-config.defaults.json', DEFAULT_AGENT_CONFIG_FALLBACK);
 
 // Load environment variables from .env.local (for production builds)
 function loadEnvFile() {
@@ -701,56 +777,71 @@ async function migrateToItemsTable() {
 }
 
 // ========== Auto-Updater Configuration ==========
+// Note: Auto-updater is disabled for Mac App Store builds (App Store handles updates)
 
-// Configure auto-updater
-autoUpdater.autoDownload = false; // Don't auto-download, ask user first
-autoUpdater.autoInstallOnAppQuit = true; // Install when app quits
+if (autoUpdater) {
+  // Configure auto-updater (only for non-MAS builds)
+  autoUpdater.autoDownload = false; // Don't auto-download, ask user first
+  autoUpdater.autoInstallOnAppQuit = true; // Install when app quits
 
-// Auto-updater event handlers
-autoUpdater.on('checking-for-update', () => {
-  console.log('Checking for updates...');
-  if (mainWindow) {
-    mainWindow.webContents.send('checking-for-update');
-  }
-});
+  // Auto-updater event handlers
+  autoUpdater.on('checking-for-update', () => {
+    console.log('Checking for updates...');
+    if (mainWindow) {
+      mainWindow.webContents.send('checking-for-update');
+    }
+  });
 
-autoUpdater.on('update-available', (info) => {
-  console.log('Update available:', info.version);
-  if (mainWindow) {
-    mainWindow.webContents.send('update-available', info);
-  }
-});
+  autoUpdater.on('update-available', (info) => {
+    console.log('Update available:', info.version);
+    if (mainWindow) {
+      mainWindow.webContents.send('update-available', info);
+    }
+  });
 
-autoUpdater.on('update-not-available', (info) => {
-  console.log('No updates available');
-  if (mainWindow) {
-    mainWindow.webContents.send('update-not-available', info);
-  }
-});
+  autoUpdater.on('update-not-available', (info) => {
+    console.log('No updates available');
+    if (mainWindow) {
+      mainWindow.webContents.send('update-not-available', info);
+    }
+  });
 
-autoUpdater.on('error', (err) => {
-  console.error('Auto-updater error:', err);
-  if (mainWindow) {
-    mainWindow.webContents.send('update-error', err.message);
-  }
-});
+  autoUpdater.on('error', (err) => {
+    console.error('Auto-updater error:', err);
+    if (mainWindow) {
+      mainWindow.webContents.send('update-error', err.message);
+    }
+  });
 
-autoUpdater.on('download-progress', (progressObj) => {
-  console.log(`Download progress: ${progressObj.percent}%`);
-  if (mainWindow) {
-    mainWindow.webContents.send('download-progress', progressObj);
-  }
-});
+  autoUpdater.on('download-progress', (progressObj) => {
+    console.log(`Download progress: ${progressObj.percent}%`);
+    if (mainWindow) {
+      mainWindow.webContents.send('download-progress', progressObj);
+    }
+  });
 
-autoUpdater.on('update-downloaded', (info) => {
-  console.log('Update downloaded:', info.version);
-  if (mainWindow) {
-    mainWindow.webContents.send('update-downloaded', info);
-  }
-});
+  autoUpdater.on('update-downloaded', (info) => {
+    console.log('Update downloaded:', info.version);
+    if (mainWindow) {
+      mainWindow.webContents.send('update-downloaded', info);
+    }
+  });
+}
 
 // IPC handlers for update actions
 ipcMain.handle('check-for-updates', async () => {
+  // For MAS builds, updates are handled by the App Store
+  if (isMAS) {
+    console.log('Update check skipped - Mac App Store handles updates');
+    if (mainWindow) {
+      mainWindow.webContents.send('update-not-available', {
+        version: app.getVersion(),
+        message: 'Updates are handled by the Mac App Store'
+      });
+    }
+    return null;
+  }
+
   if (process.env.NODE_ENV === 'development') {
     console.log('Update check requested in development mode - simulating...');
     if (mainWindow) {
@@ -774,6 +865,9 @@ ipcMain.handle('check-for-updates', async () => {
 });
 
 ipcMain.handle('download-update', async () => {
+  if (isMAS || !autoUpdater) {
+    throw new Error('Updates are handled by the Mac App Store');
+  }
   try {
     return await autoUpdater.downloadUpdate();
   } catch (error) {
@@ -783,6 +877,9 @@ ipcMain.handle('download-update', async () => {
 });
 
 ipcMain.handle('install-update', () => {
+  if (isMAS || !autoUpdater) {
+    throw new Error('Updates are handled by the Mac App Store');
+  }
   autoUpdater.quitAndInstall();
 });
 
@@ -909,8 +1006,8 @@ app.whenReady().then(async () => {
   createWindow();
   createTray();
 
-  // Check for updates in production
-  if (process.env.NODE_ENV !== 'development') {
+  // Check for updates in production (skip for MAS builds - App Store handles updates)
+  if (process.env.NODE_ENV !== 'development' && autoUpdater && !isMAS) {
     setTimeout(() => {
       autoUpdater.checkForUpdates();
     }, 3000); // Check after 3 seconds to let the app fully load
