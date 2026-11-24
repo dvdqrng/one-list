@@ -74,13 +74,20 @@ struct FocusView: View {
     private func stacked(height: CGFloat) -> some View {
         let resting = isEditing ? Self.foldedHeight : restingHeight(split, in: height)
         let top = min(max(resting + dragOffset, Self.foldedHeight), height * 0.78)
-        let folded = top < 300
+        // Decided by where the split rests, not mid-drag: swapping the orb for the compact bar while dragging
+        // would tear down and rebuild the Metal view on every crossing.
+        let folded = isEditing || resting < 300
         return VStack(spacing: 0) {
             Group {
                 if folded {
                     compactBar.frame(maxHeight: .infinity, alignment: .bottom)
                 } else {
-                    orbSide(height: top, compact: true)
+                    // Laid out once at the resting height; the drag only scales it (a cheap transform), so
+                    // the Metal orb isn't re-laid out or resized on every frame.
+                    orbSide(height: resting, compact: true)
+                        .frame(height: resting)
+                        .scaleEffect(min(1, top / resting), anchor: .center)
+                        .frame(height: top, alignment: .center)
                 }
             }
             .frame(height: top)
@@ -113,10 +120,14 @@ struct FocusView: View {
             .frame(maxWidth: .infinity, minHeight: Self.handleHeight)
             .contentShape(Rectangle())
             .gesture(
-                DragGesture(minimumDistance: 2)
+                // Global coordinates: the handle moves with the drag, so local translation would feed back
+                // into itself and make the split shake.
+                DragGesture(minimumDistance: 2, coordinateSpace: .global)
                     .onChanged { value in
                         if isEditing { dismissKeyboard() }
-                        dragOffset = value.translation.height
+                        var instant = Transaction()
+                        instant.disablesAnimations = true
+                        withTransaction(instant) { dragOffset = value.translation.height }
                     }
                     .onEnded { value in
                         let start = restingHeight(split, in: height)
