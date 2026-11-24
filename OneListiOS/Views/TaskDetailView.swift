@@ -142,7 +142,8 @@ private struct TaskDetailForm: View {
 
     private func text(_ keyPath: WritableKeyPath<Item, String>) -> Binding<String> {
         Binding(get: { store.item(item.id)?[keyPath: keyPath] ?? "" },
-                set: { value in store.update(item.id) { $0[keyPath: keyPath] = value } })
+                // Titles are one line; Return in the (wrapping) field must not add line breaks.
+                set: { value in store.update(item.id) { $0[keyPath: keyPath] = value.replacingOccurrences(of: "\n", with: " ") } })
     }
 
     private var notes: Binding<String> {

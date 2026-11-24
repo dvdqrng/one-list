@@ -26,7 +26,6 @@ struct BoardView: View {
             .scrollTargetBehavior(.viewAligned)
             .scrollIndicators(.hidden)
         }
-        .refreshable { await store.sync.syncNow() }
     }
 }
 

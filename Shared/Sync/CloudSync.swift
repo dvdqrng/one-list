@@ -257,7 +257,17 @@ final class CloudSync {
                 guard let self else { return }
                 self.pollTask?.cancel()
                 // Don't leave edits behind when the app goes away.
-                if let engine = self.engine { Task { try? await engine.sendChanges() } }
+                guard let engine = self.engine else { return }
+                #if os(iOS)
+                // iOS suspends the app right away; ask for time to finish the upload.
+                let background = UIApplication.shared.beginBackgroundTask(withName: "Sync")
+                Task {
+                    try? await engine.sendChanges()
+                    UIApplication.shared.endBackgroundTask(background)
+                }
+                #else
+                Task { try? await engine.sendChanges() }
+                #endif
             }
         })
         observers.append(center.addObserver(forName: .CKAccountChanged, object: nil, queue: .main) { [weak self] _ in

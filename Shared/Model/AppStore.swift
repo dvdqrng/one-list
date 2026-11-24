@@ -300,8 +300,9 @@ final class AppStore {
         db.save(saved, notify: false)
         db.delete(ids: removed, notify: false)
         db.delete(ids: blank, notify: false)
+        // Sort only. Never renumber here: a fetch arrives in batches in no particular order, and
+        // renumbering a partial batch would upload a scrambled order to every device.
         items = byID.values.sorted { ($0.position, $0.id) < ($1.position, $1.id) }
-        renumber()
 
         let gone = Set(removed + blank)
         if let active = activeItemID, gone.contains(active) { activeItemID = nil }

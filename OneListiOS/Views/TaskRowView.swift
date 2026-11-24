@@ -56,6 +56,7 @@ struct TaskRowView: View {
         .contentShape(Rectangle())
         .onTapGesture { (onTap ?? defaultTap)() }
         .animation(.snappy(duration: 0.16), value: level)
+        .sensoryFeedback(trigger: item.completed) { _, done in done ? .success : .selection }
     }
 
     private func defaultTap() {

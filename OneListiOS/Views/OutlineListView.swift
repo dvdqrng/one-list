@@ -10,6 +10,7 @@ struct OutlineListView: View {
     var body: some View {
         let _ = store.currentDay // re-evaluated when the day changes
         let entries = store.outline
+        ScrollViewReader { proxy in
         List {
             if !searchText.isEmpty {
                 searchResults
@@ -23,6 +24,11 @@ struct OutlineListView: View {
         .environment(\.defaultMinListRowHeight, Metrics.rowHeight)
         .scrollDismissesKeyboard(.interactively)
         .refreshable { await store.sync.syncNow() }
+        // New tasks are added at the end or below the current one: bring them into view, above the keyboard.
+        .onChange(of: store.focusRequest?.id) { _, id in
+            guard let id else { return }
+            withAnimation(.snappy(duration: 0.25)) { proxy.scrollTo(id) }
+        }
         .overlay {
             if searchText.isEmpty && store.listGroupBy == .project && !entries.contains(where: { $0.item != nil }) {
                 ContentUnavailableView {
@@ -34,6 +40,7 @@ struct OutlineListView: View {
                         .buttonStyle(.bordered)
                 }
             }
+        }
         }
     }
 
@@ -47,25 +54,6 @@ struct OutlineListView: View {
             }
         }
         .onMove { source, destination in move(source, to: destination, in: rows.map(\.id)) }
-        newTaskRow
-    }
-
-    private var newTaskRow: some View {
-        Button {
-            withAnimation(.snappy(duration: 0.2)) { store.focus(store.addItem()) }
-        } label: {
-            HStack(spacing: Metrics.checkboxGap) {
-                Image(systemName: "plus.circle.fill")
-                    .font(.system(size: Metrics.checkbox))
-                    .frame(width: Metrics.checkbox)
-                Text("New Task").font(.system(size: Metrics.taskFont, weight: .medium))
-            }
-            .padding(.leading, Metrics.disclosure + Metrics.disclosureGap)
-            .frame(minHeight: Metrics.rowHeight)
-        }
-        .foregroundStyle(Color.accentColor)
-        .listRowSeparator(.hidden)
-        .moveDisabled(true)
     }
 
     // MARK: Due-date mode

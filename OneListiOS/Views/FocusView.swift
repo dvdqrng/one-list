@@ -52,7 +52,6 @@ struct FocusView: View {
             }
         }
         .environment(\.colorScheme, .dark)
-        .preferredColorScheme(.dark)
         .statusBarHidden(timer.isRunning)
     }
 

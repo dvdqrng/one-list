@@ -80,12 +80,31 @@ struct SyncTests {
         let b = store.addItem(after: a) { $0.title = "B" }
         var inserted = Item()
         inserted.title = "Between"
-        inserted.position = store.item(b)!.position // same slot: tie broken by id, then renumbered
+        inserted.position = store.item(b)!.position // same slot: tie broken by id
         inserted.updatedAt = .now.addingTimeInterval(1)
+        let before = store.items.filter { $0.id != a }.map { ($0.id, $0.updatedAt) }
         store.applyRemote([inserted], deleted: [a])
 
         #expect(store.item(a) == nil)
         #expect(store.item(inserted.id) != nil)
-        #expect(store.items.map(\.position) == Array(store.items.indices))
+        // Sorted by position, and nothing renumbered: remote batches are partial and unordered, so
+        // renumbering them would upload a scrambled order.
+        #expect(store.items.map(\.position) == store.items.map(\.position).sorted())
+        for (id, updatedAt) in before { #expect(store.item(id)?.updatedAt == updatedAt) }
+    }
+
+    @Test func partialUnorderedBatchKeepsPositions() {
+        let store = AppStore()
+        var batch: [Item] = []
+        for position in [40, 3, 17] {
+            var item = Item()
+            item.title = "Remote \(position)"
+            item.position = 1_000 + position
+            item.updatedAt = .now.addingTimeInterval(1)
+            batch.append(item)
+        }
+        store.applyRemote(batch, deleted: [])
+        let remote = store.items.filter { $0.title.hasPrefix("Remote") }
+        #expect(remote.map(\.position) == [1_003, 1_017, 1_040])
     }
 }

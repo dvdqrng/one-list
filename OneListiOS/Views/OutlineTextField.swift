@@ -73,7 +73,8 @@ struct OutlineTextField: UIViewRepresentable {
 
         func textFieldShouldReturn(_ textField: UITextField) -> Bool {
             guard let field = textField as? OutlineUITextField else { return true }
-            _ = parent.onKey(.enter, field.caretOffset, field.text ?? "")
+            // Rows that don't handle Return (search results, cards) just stop editing.
+            if !parent.onKey(.enter, field.caretOffset, field.text ?? "") { field.resignFirstResponder() }
             return false
         }
 

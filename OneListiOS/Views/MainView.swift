@@ -1,7 +1,8 @@
 import SwiftUI
 
-/// The iOS window: list or board, with the same toolbar vocabulary as the Mac (view options, AI composer,
-/// focus, more) moved to where iOS puts it — navigation bar, bottom bar and the keyboard bar.
+/// The iOS window: list or board, with the same vocabulary as the Mac toolbar (view options, AI composer,
+/// focus, more) placed where iOS puts it. Top: focus (leading), view options and more (trailing).
+/// Bottom: search, AI composer, New Task — on iOS 26 search lives in the bottom bar, as in the system apps.
 struct MainView: View {
     @Environment(AppStore.self) private var store
     @Environment(FocusTimer.self) private var timer
@@ -18,7 +19,15 @@ struct MainView: View {
             content
                 .navigationTitle("One List")
                 .modifier(Subtitle(text: subtitle))
-                .toolbar { toolbar }
+                .toolbar { topBar }
+                .toolbar { keyboardBar }
+                .modifier(SearchAndBottomBar(searchText: $searchText, bottomBar: bottomBar, hidden: store.showAIInput))
+                // The composer takes the bottom bar's place while open (like Messages), above the keyboard.
+                .safeAreaInset(edge: .bottom, spacing: 0) {
+                    if store.showAIInput {
+                        AIInputBar().transition(.move(edge: .bottom).combined(with: .opacity))
+                    }
+                }
                 // iPad: a side column like the Mac inspector; iPhone: a sheet.
                 .inspector(isPresented: Binding(get: { store.isSidebarOpen && sizeClass == .regular },
                                                 set: { store.isSidebarOpen = $0 })) {
@@ -30,18 +39,14 @@ struct MainView: View {
                     TaskDetailView()
                 }
         }
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            if store.showAIInput {
-                AIInputBar().transition(.move(edge: .bottom).combined(with: .opacity))
-            }
-        }
         .animation(.snappy(duration: 0.25), value: store.showAIInput)
         .sheet(item: $store.changelog) { ChangesSheet(session: $0) }
         .sheet(isPresented: $showSettings) { SettingsScreen() }
         .fullScreenCover(isPresented: Binding(get: { timer.isActive }, set: { if !$0 { timer.end() } })) {
             FocusView()
         }
-        .preferredColorScheme(AppearancePreference(rawValue: appearance)?.colorScheme)
+        .onChange(of: appearance, initial: true) { applyAppearance() }
+        .onChange(of: timer.isActive) { applyAppearance() }
         .onChange(of: undoManager, initial: true) { store.undoManager = undoManager }
         .onChange(of: scenePhase) { _, phase in
             guard phase == .active else { return }
@@ -58,26 +63,49 @@ struct MainView: View {
     }
 
     @ViewBuilder private var content: some View {
-        switch store.viewMode {
-        case .list:
+        if !searchText.isEmpty {
+            // Search covers all tasks, from the list or the board.
             OutlineListView(searchText: searchText)
-                .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .automatic), prompt: "Search Tasks")
-        case .kanban:
-            BoardView()
-                .navigationBarTitleDisplayMode(.inline)
+        } else {
+            switch store.viewMode {
+            case .list:
+                OutlineListView()
+            case .kanban:
+                BoardView()
+                    .navigationBarTitleDisplayMode(.inline)
+            }
         }
     }
 
     private var subtitle: String {
         let open = store.todos.filter { !$0.completed && !$0.title.isEmpty }.count
-        let tasks = open == 1 ? "1 open task" : "\(open) open tasks"
-        return store.sync.status == .syncing ? tasks + " · Syncing…" : tasks
+        return open == 1 ? "1 open task" : "\(open) open tasks"
     }
 
-    // MARK: Toolbar
+    /// Appearance is set on the window: `preferredColorScheme(nil)` doesn't switch back to the system
+    /// setting on iOS. Focus mode is always dark, as on the Mac.
+    private func applyAppearance() {
+        let preference = timer.isActive ? .dark : AppearancePreference(rawValue: appearance) ?? .system
+        let style: UIUserInterfaceStyle = switch preference {
+        case .system: .unspecified
+        case .light: .light
+        case .dark: .dark
+        }
+        for case let scene as UIWindowScene in UIApplication.shared.connectedScenes {
+            for window in scene.windows { window.overrideUserInterfaceStyle = style }
+        }
+    }
 
-    @ToolbarContentBuilder private var toolbar: some ToolbarContent {
+    // MARK: Toolbars
+
+    @ToolbarContentBuilder private var topBar: some ToolbarContent {
         @Bindable var store = store
+        ToolbarItem(placement: .topBarLeading) {
+            Button { timer.start() } label: {
+                Label("Start Focus Session", systemImage: "timer")
+            }
+        }
+
         ToolbarItemGroup(placement: .topBarTrailing) {
             Menu {
                 Picker("View", selection: $store.viewMode) {
@@ -132,25 +160,25 @@ struct MainView: View {
                 Label("More", systemImage: store.isFindingSimilar ? "hourglass" : "ellipsis.circle")
             }
         }
+    }
 
-        ToolbarItemGroup(placement: .bottomBar) {
-            Button {
-                withAnimation(.snappy(duration: 0.2)) { store.focus(store.addItem()) }
-            } label: {
-                Label("New Task", systemImage: "plus.circle.fill")
-                    .labelStyle(.titleAndIcon)
-                    .font(.system(size: Metrics.taskFont, weight: .semibold))
-            }
-            Spacer()
-            Toggle(isOn: $store.showAIInput) {
+    /// AI composer and New Task; search joins them on iOS 26 (see `SearchAndBottomBar`).
+    private var bottomBar: some View {
+        HStack {
+            Button { store.showAIInput = true } label: {
                 Label("AI Composer", systemImage: "sparkles")
             }
-            .toggleStyle(.button)
-            Button { timer.start() } label: {
-                Label("Start Focus Session", systemImage: "timer")
+            Button {
+                searchText = ""
+                withAnimation(.snappy(duration: 0.2)) { store.focus(store.addItem()) }
+            } label: {
+                Label("New Task", systemImage: "plus")
             }
         }
+        .labelStyle(.iconOnly)
+    }
 
+    @ToolbarContentBuilder private var keyboardBar: some ToolbarContent {
         ToolbarItemGroup(placement: .keyboard) {
             if let id = store.editingID, let item = store.item(id) {
                 Button { withAnimation(.snappy(duration: 0.16)) { store.indentSelection(by: -1) } } label: {
@@ -180,6 +208,41 @@ struct MainView: View {
                     Label("Done Editing", systemImage: "keyboard.chevron.compact.down")
                 }
             }
+        }
+    }
+}
+
+/// iOS 26+: search is a (minimized) field in the bottom bar next to the actions, as in Mail or Notes, so it
+/// never fights the large title or pull to refresh. Earlier iOS: the classic search field under the title.
+private struct SearchAndBottomBar<Bar: View>: ViewModifier {
+    @Binding var searchText: String
+    let bottomBar: Bar
+    /// While the AI composer is open it replaces the bottom bar.
+    let hidden: Bool
+
+    func body(content: Content) -> some View {
+        if #available(iOS 26, *) {
+            content
+                .searchable(text: $searchText, prompt: "Search Tasks")
+                .searchToolbarBehavior(.minimize)
+                .toolbar {
+                    if !hidden {
+                        DefaultToolbarItem(kind: .search, placement: .bottomBar)
+                        ToolbarSpacer(.flexible, placement: .bottomBar)
+                        ToolbarItem(placement: .bottomBar) { bottomBar }
+                    }
+                }
+        } else {
+            content
+                .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .automatic), prompt: "Search Tasks")
+                .toolbar {
+                    if !hidden {
+                        ToolbarItemGroup(placement: .bottomBar) {
+                            Spacer()
+                            bottomBar
+                        }
+                    }
+                }
         }
     }
 }

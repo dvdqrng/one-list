@@ -13,6 +13,12 @@ struct AIInputBar: View {
     @State private var feedbackTask: Task<Void, Never>?
     @FocusState private var focused: Bool
 
+    #if os(iOS)
+    private static let control: CGFloat = 36 // touch target
+    #else
+    private static let control: CGFloat = 24
+    #endif
+
     private var canSend: Bool { !input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !isProcessing }
 
     var body: some View {
@@ -22,10 +28,26 @@ struct AIInputBar: View {
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
             HStack(alignment: .bottom, spacing: 12) {
+                #if os(iOS)
+                // iOS has no ⌘J: the composer closes here and gives the bottom bar back.
+                Button {
+                    if dictation.isListening { dictation.stop() }
+                    store.showAIInput = false
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 32, height: 32)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Close AI Composer")
+                #else
                 Image(systemName: "sparkles")
                     .font(.system(size: 14))
                     .foregroundStyle(.tertiary)
                     .frame(height: 24)
+                #endif
                 TextField(dictation.isListening ? "Listening…" : "Add or update tasks in your own words…",
                           text: $input, axis: .vertical)
                     .textFieldStyle(.plain)
@@ -38,7 +60,7 @@ struct AIInputBar: View {
                 Button(action: toggleRecording) {
                     Image(systemName: dictation.isListening ? "stop.circle.fill" : "mic")
                         .font(.system(size: 14))
-                        .frame(width: 24, height: 24)
+                        .frame(width: Self.control, height: Self.control)
                         .foregroundStyle(dictation.isListening ? Color.red : Color.secondary)
                         .modifier(Pulse(active: dictation.isListening))
                 }
@@ -52,7 +74,7 @@ struct AIInputBar: View {
                     } else {
                         Image(systemName: "arrow.up.circle.fill")
                             .font(.system(size: 24))
-                            .frame(width: 24, height: 24)
+                            .frame(width: Self.control, height: Self.control)
                             .foregroundStyle(canSend ? Color.accentColor : Color.secondary.opacity(0.4))
                     }
                 }
