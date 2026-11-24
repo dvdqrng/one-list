@@ -12,6 +12,7 @@ struct MainView: View {
     @AppStorage("theme", store: Database.preferences) private var appearance = AppearancePreference.system.rawValue
     @State private var searchText = ""
     @State private var showSettings = false
+    @State private var focusWindow = FocusWindow()
 
     var body: some View {
         @Bindable var store = store
@@ -45,19 +46,12 @@ struct MainView: View {
         .animation(.snappy(duration: 0.3), value: timer.isMinimized)
         .sheet(item: $store.changelog) { ChangesSheet(session: $0) }
         .sheet(isPresented: $showSettings) { SettingsScreen() }
-        // The focus session covers the app in place (no sheet): it grows out of and shrinks back into the
-        // app; minimizing keeps it running (pill, Live Activity), only End ends it.
-        .overlay {
-            if showsFocus {
-                FocusView()
-                    .transition(.asymmetric(insertion: .opacity.combined(with: .scale(scale: 0.96)),
-                                            removal: .opacity.combined(with: .scale(scale: 0.96))))
-                    .accessibilityAddTraits(.isModal)
-            }
+        // The focus session opens in its own window above the app; minimizing keeps it running (pill,
+        // Live Activity), only End ends it.
+        .onChange(of: showsFocus, initial: true) { _, shows in
+            if shows { focusWindow.show(store: store, timer: timer) } else { focusWindow.hide() }
         }
-        .animation(.smooth(duration: 0.35), value: showsFocus)
         .onChange(of: appearance, initial: true) { applyAppearance() }
-        .onChange(of: timer.isActive) { applyAppearance() }
         .onChange(of: undoManager, initial: true) { store.undoManager = undoManager }
         .onChange(of: store.focusTasks) { if timer.isActive { AppDelegate.focusActivity?.update() } }
         .onChange(of: scenePhase) { _, phase in
@@ -97,16 +91,16 @@ struct MainView: View {
     }
 
     /// Appearance is set on the window: `preferredColorScheme(nil)` doesn't switch back to the system
-    /// setting on iOS. Focus mode is always dark, as on the Mac.
+    /// setting on iOS. (Focus mode is dark in its own window.)
     private func applyAppearance() {
-        let preference = timer.isActive ? .dark : AppearancePreference(rawValue: appearance) ?? .system
+        let preference = AppearancePreference(rawValue: appearance) ?? .system
         let style: UIUserInterfaceStyle = switch preference {
         case .system: .unspecified
         case .light: .light
         case .dark: .dark
         }
         for case let scene as UIWindowScene in UIApplication.shared.connectedScenes {
-            for window in scene.windows { window.overrideUserInterfaceStyle = style }
+            for window in scene.windows where window.windowLevel == .normal { window.overrideUserInterfaceStyle = style }
         }
     }
 
