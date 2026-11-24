@@ -7,11 +7,10 @@ Liquid Glass on macOS 26 / iOS 26.
 
 ## Build & run
 
-**First time (once):** open `OneList.xcodeproj`, select each app target (`OneList`, `OneListiOS`) › Signing &
-Capabilities, and let Xcode register the App ID and the iCloud container `iCloud.com.onelist.app` for team
-`Y7G63W88RT` (or `xcodebuild … -allowProvisioningUpdates`). If the bundle ID is taken, change
-`PRODUCT_BUNDLE_IDENTIFIER` and `ONE_LIST_CLOUDKIT_CONTAINER` in `project.yml` (and the entitlements), then
-`xcodegen generate`. Before shipping to TestFlight/App Store, deploy the CloudKit schema to production in the
+Both apps share the bundle ID `com.davidquiring.onelist` (the iOS app is the iOS version of the Mac app) and
+the iCloud container `iCloud.com.davidquiring.onelist`, registered for team `Y7G63W88RT`; Xcode's automatic
+signing handles profiles. New devices: build once with `-allowProvisioningUpdates -allowProvisioningDeviceRegistration`
+(or just ⌘R in Xcode). Before shipping to TestFlight/App Store, deploy the CloudKit schema to production in the
 CloudKit Console and set `aps-environment` to `production`.
 
 iOS: choose the `OneListiOS` scheme and an iPhone/iPad, then ⌘R.

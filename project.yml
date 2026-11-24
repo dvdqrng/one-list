@@ -1,6 +1,6 @@
 name: OneList
 options:
-  bundleIdPrefix: com.onelist
+  bundleIdPrefix: com.davidquiring
   deploymentTarget:
     macOS: "14.0"
     iOS: "17.0"
@@ -12,7 +12,7 @@ settings:
     CURRENT_PROJECT_VERSION: "1"
     DEVELOPMENT_TEAM: Y7G63W88RT
     # iCloud container shared by the Mac and iOS apps. Empty = local only (no sync).
-    ONE_LIST_CLOUDKIT_CONTAINER: iCloud.com.onelist.app
+    ONE_LIST_CLOUDKIT_CONTAINER: iCloud.com.davidquiring.onelist
 targets:
   OneList:
     type: application
@@ -23,7 +23,7 @@ targets:
     settings:
       base:
         PRODUCT_NAME: One List
-        PRODUCT_BUNDLE_IDENTIFIER: com.onelist.app
+        PRODUCT_BUNDLE_IDENTIFIER: com.davidquiring.onelist
         INFOPLIST_FILE: OneList/App/Info.plist
         CODE_SIGN_ENTITLEMENTS: OneList/App/OneList.entitlements
         CODE_SIGN_STYLE: Automatic
@@ -42,7 +42,7 @@ targets:
     settings:
       base:
         PRODUCT_NAME: One List
-        PRODUCT_BUNDLE_IDENTIFIER: com.onelist.app
+        PRODUCT_BUNDLE_IDENTIFIER: com.davidquiring.onelist
         INFOPLIST_FILE: OneListiOS/App/Info.plist
         CODE_SIGN_ENTITLEMENTS: OneListiOS/App/OneListiOS.entitlements
         CODE_SIGN_STYLE: Automatic
@@ -59,7 +59,7 @@ targets:
       - target: OneList
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.onelist.app.tests
+        PRODUCT_BUNDLE_IDENTIFIER: com.davidquiring.onelist.tests
         GENERATE_INFOPLIST_FILE: YES
         SWIFT_DEFAULT_ACTOR_ISOLATION: MainActor
         TEST_HOST: "$(BUILT_PRODUCTS_DIR)/One List.app/Contents/MacOS/One List"
