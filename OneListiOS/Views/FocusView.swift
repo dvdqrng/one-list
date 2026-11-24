@@ -1,15 +1,24 @@
 import SwiftUI
 
 /// Full-screen, always-dark focus session, split in two: the orb with its controls, and the "Now" tasks
-/// or distraction notes. iPhone portrait stacks them (orb on top); iPad and landscape put them side by
-/// side. While typing on iPhone the orb half folds into a compact bar so the list gets the room above
-/// the keyboard.
+/// or distraction notes. iPhone portrait stacks them as two rounded cards with a handle between them
+/// that drags the split (orb large, balanced, or folded into a compact bar). While typing the orb card
+/// folds by itself so the list gets the room above the keyboard. iPad and landscape: side by side.
 struct FocusView: View {
     @Environment(AppStore.self) private var store
     @Environment(FocusTimer.self) private var timer
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var tab: FocusPanel.Tab = .tasks
     @State private var isEditing = false
+    @State private var split: Split = .balanced
+    @State private var dragOffset: CGFloat = 0
+
+    /// Where the divider rests.
+    private enum Split: CaseIterable { case folded, balanced, orb }
+    private static let foldedHeight: CGFloat = 64
+    private static let handleHeight: CGFloat = 28
+    private static let cardRadius: CGFloat = 32
+    private static let cardColor = Color(white: 0.1)
 
     var body: some View {
         GeometryReader { geo in
@@ -25,17 +34,7 @@ struct FocusView: View {
                             .frame(width: min(440, geo.size.width * 0.45))
                     }
                 } else {
-                    VStack(spacing: 0) {
-                        if isEditing {
-                            compactBar
-                                .transition(.move(edge: .top).combined(with: .opacity))
-                        } else {
-                            orbSide(height: geo.size.height * 0.52, compact: true)
-                                .frame(height: geo.size.height * 0.52)
-                                .transition(.move(edge: .top).combined(with: .opacity))
-                        }
-                        FocusPanel(tab: $tab, isEditing: $isEditing)
-                    }
+                    stacked(height: geo.size.height)
                 }
 
                 if timer.isComplete && !isEditing {
@@ -61,11 +60,97 @@ struct FocusView: View {
         #endif
     }
 
+    // MARK: Split
+
+    private func restingHeight(_ split: Split, in height: CGFloat) -> CGFloat {
+        switch split {
+        case .folded: Self.foldedHeight
+        case .balanced: height * 0.5
+        case .orb: height * 0.7
+        }
+    }
+
+    /// The orb card, the handle and the list card; the handle drags the split and snaps to a resting place.
+    private func stacked(height: CGFloat) -> some View {
+        let resting = isEditing ? Self.foldedHeight : restingHeight(split, in: height)
+        let top = min(max(resting + dragOffset, Self.foldedHeight), height * 0.78)
+        let folded = top < 300
+        return VStack(spacing: 0) {
+            Group {
+                if folded {
+                    compactBar.frame(maxHeight: .infinity, alignment: .bottom)
+                } else {
+                    orbSide(height: top, compact: true)
+                }
+            }
+            .frame(height: top)
+            .frame(maxWidth: .infinity)
+            .background {
+                UnevenRoundedRectangle(bottomLeadingRadius: Self.cardRadius, bottomTrailingRadius: Self.cardRadius,
+                                       style: .continuous)
+                    .fill(Self.cardColor)
+                    .ignoresSafeArea(edges: .top)
+            }
+            .clipped()
+
+            handle(height: height)
+
+            FocusPanel(tab: $tab, isEditing: $isEditing)
+                .padding(.top, 6)
+                .background {
+                    UnevenRoundedRectangle(topLeadingRadius: Self.cardRadius, topTrailingRadius: Self.cardRadius,
+                                           style: .continuous)
+                        .fill(Self.cardColor)
+                        .ignoresSafeArea(edges: .bottom)
+                }
+        }
+    }
+
+    private func handle(height: CGFloat) -> some View {
+        Capsule()
+            .fill(Color.white.opacity(dragOffset == 0 ? 0.3 : 0.6))
+            .frame(width: 40, height: 5)
+            .frame(maxWidth: .infinity, minHeight: Self.handleHeight)
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 2)
+                    .onChanged { value in
+                        if isEditing { dismissKeyboard() }
+                        dragOffset = value.translation.height
+                    }
+                    .onEnded { value in
+                        let start = restingHeight(split, in: height)
+                        let projected = start + value.predictedEndTranslation.height
+                        let nearest = Split.allCases.min {
+                            abs(restingHeight($0, in: height) - projected) < abs(restingHeight($1, in: height) - projected)
+                        } ?? .balanced
+                        if nearest != split { Haptics.select() }
+                        withAnimation(.snappy(duration: 0.3)) {
+                            split = nearest
+                            dragOffset = 0
+                        }
+                    }
+            )
+            .accessibilityElement()
+            .accessibilityLabel("Resize")
+            .accessibilityValue(split == .folded ? "Tasks large" : split == .orb ? "Orb large" : "Even")
+            .accessibilityAdjustableAction { direction in
+                let all = Split.allCases
+                let i = all.firstIndex(of: split) ?? 1
+                let next = direction == .increment ? min(i + 1, all.count - 1) : max(i - 1, 0)
+                withAnimation(.snappy) { split = all[next] }
+            }
+    }
+
+    private func dismissKeyboard() {
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+    }
+
     /// Top bar, orb and controls, with the orb scaled to the space it gets.
     private func orbSide(height: CGFloat, compact: Bool) -> some View {
         // Top bar ~60, time ~40, controls ~80 + spacing.
         let room = height - (compact ? 230 : 300)
-        let scale = min(1, max(0.45, room / FocusTimerDisplay.dialSize))
+        let scale = min(1, max(0.35, room / FocusTimerDisplay.dialSize))
         return VStack(spacing: 0) {
             topBar
             Spacer(minLength: 8)
@@ -79,7 +164,8 @@ struct FocusView: View {
     /// While typing (iPhone): a small orb, the time and pause, plus Done to put the keyboard away.
     private var compactBar: some View {
         HStack(spacing: 12) {
-            FocusTimerDisplay(style: store.focusTimerStyle)
+            // The digits are the time itself; other styles get a miniature next to it.
+            FocusTimerDisplay(style: [.digits, .pieWithTime].contains(store.focusTimerStyle) ? .pie : store.focusTimerStyle)
                 .scaleEffect(40 / FocusTimerDisplay.dialSize)
                 .frame(width: 40, height: 40)
                 .allowsHitTesting(false)
@@ -100,12 +186,23 @@ struct FocusView: View {
                 .buttonStyle(FloatingButtonStyle(size: 44))
                 .accessibilityLabel(timer.isRunning ? "Pause" : "Resume")
             }
-            Button("Done") {
-                Haptics.tap()
-                UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+            if isEditing {
+                Button("Done") {
+                    Haptics.tap()
+                    dismissKeyboard()
+                }
+                .buttonStyle(FloatingButtonStyle(size: 44, pill: true))
+                .font(.system(size: 17, weight: .semibold))
+            } else {
+                Button {
+                    Haptics.tap()
+                    withAnimation(.snappy(duration: 0.3)) { split = .balanced }
+                } label: {
+                    Image(systemName: "chevron.down")
+                }
+                .buttonStyle(FloatingButtonStyle(size: 44))
+                .accessibilityLabel("Show Orb")
             }
-            .buttonStyle(FloatingButtonStyle(size: 44, pill: true))
-            .font(.system(size: 17, weight: .semibold))
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 8)
