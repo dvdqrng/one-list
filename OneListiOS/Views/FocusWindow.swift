@@ -57,15 +57,23 @@ private struct FocusWindowRoot: View {
 
     var body: some View {
         ZStack {
+            Color.clear
             if isShown {
                 Color.black
                     .ignoresSafeArea()
                     .transition(.opacity)
                 FocusView()
-                    .transition(.opacity.combined(with: .scale(scale: 0.96)))
+                    .transition(.opacity.combined(with: .scale(scale: 1.04))) // from slightly larger: no edges show
             }
         }
         .animation(.smooth(duration: Self.duration), value: isShown)
-        .onAppear { DispatchQueue.main.async { appeared = true } } // after the first frame, so it animates
+        // A new window gets its safe area a moment after its first layout; appearing before that lays the
+        // screen out edge to edge and then jumps (black bars at the top and bottom). Wait for the insets.
+        .onGeometryChange(for: Bool.self) { $0.safeAreaInsets.top > 0 } action: { ready in
+            if ready && !appeared { appeared = true }
+        }
+        .onAppear {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { appeared = true } // no insets (rare)
+        }
     }
 }

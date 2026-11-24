@@ -49,7 +49,6 @@ struct FocusView: View {
             }
         }
         .environment(\.colorScheme, .dark)
-        .statusBarHidden(timer.isRunning && !isEditing)
         .animation(reduceMotion ? nil : .snappy(duration: 0.3), value: isEditing)
         .animation(.snappy(duration: 0.3), value: timer.isComplete)
         #if DEBUG
