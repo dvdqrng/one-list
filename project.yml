@@ -1,0 +1,84 @@
+name: OneList
+options:
+  bundleIdPrefix: com.onelist
+  deploymentTarget:
+    macOS: "14.0"
+    iOS: "17.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    MARKETING_VERSION: "0.3.0"
+    CURRENT_PROJECT_VERSION: "1"
+    DEVELOPMENT_TEAM: Y7G63W88RT
+    # iCloud container shared by the Mac and iOS apps. Empty = local only (no sync).
+    ONE_LIST_CLOUDKIT_CONTAINER: iCloud.com.onelist.app
+targets:
+  OneList:
+    type: application
+    platform: macOS
+    sources:
+      - path: OneList
+      - path: Shared
+    settings:
+      base:
+        PRODUCT_NAME: One List
+        PRODUCT_BUNDLE_IDENTIFIER: com.onelist.app
+        INFOPLIST_FILE: OneList/App/Info.plist
+        CODE_SIGN_ENTITLEMENTS: OneList/App/OneList.entitlements
+        CODE_SIGN_STYLE: Automatic
+        CODE_SIGN_IDENTITY: Apple Development
+        ENABLE_HARDENED_RUNTIME: YES
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        SWIFT_STRICT_CONCURRENCY: complete
+        SWIFT_DEFAULT_ACTOR_ISOLATION: MainActor
+        COMBINE_HIDPI_IMAGES: YES
+  OneListiOS:
+    type: application
+    platform: iOS
+    sources:
+      - path: OneListiOS
+      - path: Shared
+    settings:
+      base:
+        PRODUCT_NAME: One List
+        PRODUCT_BUNDLE_IDENTIFIER: com.onelist.app
+        INFOPLIST_FILE: OneListiOS/App/Info.plist
+        CODE_SIGN_ENTITLEMENTS: OneListiOS/App/OneListiOS.entitlements
+        CODE_SIGN_STYLE: Automatic
+        TARGETED_DEVICE_FAMILY: "1,2"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        SWIFT_STRICT_CONCURRENCY: complete
+        SWIFT_DEFAULT_ACTOR_ISOLATION: MainActor
+  OneListTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: OneListTests
+    dependencies:
+      - target: OneList
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.onelist.app.tests
+        GENERATE_INFOPLIST_FILE: YES
+        SWIFT_DEFAULT_ACTOR_ISOLATION: MainActor
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/One List.app/Contents/MacOS/One List"
+        BUNDLE_LOADER: "$(TEST_HOST)"
+schemes:
+  OneList:
+    build:
+      targets:
+        OneList: all
+        OneListTests: [test]
+    test:
+      targets:
+        - OneListTests
+      # The test host is the app itself; keep it away from real user data.
+      environmentVariables:
+        ONE_LIST_DATA_DIR: /tmp/one-list-tests
+  OneListiOS:
+    build:
+      targets:
+        OneListiOS: all
+    run:
+      config: Debug
