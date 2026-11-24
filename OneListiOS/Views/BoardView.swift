@@ -46,6 +46,7 @@ private struct BoardColumn: View {
                     .monospacedDigit()
                 Spacer()
                 Button {
+                    Haptics.tap()
                     withAnimation(.snappy(duration: 0.2)) { store.addItem(in: column.key) }
                 } label: {
                     Image(systemName: "plus")
@@ -84,10 +85,14 @@ private struct BoardColumn: View {
         .dropDestination(for: String.self) { ids, _ in
             guard let id = ids.first else { return false }
             if !column.items.contains(where: { $0.id == id }) {
+                Haptics.thud()
                 withAnimation(.snappy(duration: 0.2)) { store.move(id, into: column.key) }
             }
             return true
-        } isTargeted: { isTargeted = $0 }
+        } isTargeted: { targeted in
+            if targeted && !isTargeted { Haptics.select() }
+            isTargeted = targeted
+        }
     }
 }
 

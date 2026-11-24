@@ -98,6 +98,7 @@ struct OutlineListView: View {
     private func groupHeader(_ category: DueCategory, count: Int) -> some View {
         let collapsed = store.collapsedGroups.contains(category)
         return Button {
+            Haptics.select()
             withAnimation(.snappy(duration: 0.2)) { store.toggleGroupCollapsed(category) }
         } label: {
             HStack(spacing: Metrics.disclosureGap) {
@@ -129,6 +130,7 @@ struct OutlineListView: View {
     /// The "Add a task" row of an empty Now / Today / Tomorrow group.
     private func addToGroupRow(_ category: DueCategory) -> some View {
         Button {
+            Haptics.tap()
             withAnimation(.snappy(duration: 0.2)) {
                 store.focus(store.addItem { $0.assign(to: .due(category)) })
             }
@@ -217,6 +219,7 @@ struct OutlineListView: View {
         guard let from = source.first, ids.indices.contains(from) else { return }
         let target = destination > from ? destination - 1 : destination
         guard target != from, ids.indices.contains(target) else { return }
+        Haptics.tap()
         withAnimation(.snappy(duration: 0.2)) { store.move(ids[from], onto: ids[target]) }
     }
 
@@ -232,8 +235,10 @@ struct OutlineListView: View {
                            entries: [OutlineEntry]) -> Bool {
         switch key {
         case .tab:
+            Haptics.tap()
             withAnimation(.snappy(duration: 0.16)) { store.indentSelection(by: 1) }
         case .backtab:
+            Haptics.tap()
             withAnimation(.snappy(duration: 0.16)) { store.indentSelection(by: -1) }
         case .up, .down:
             let from = store.focusRequest?.id ?? item.id
@@ -281,12 +286,14 @@ struct TaskActions: ViewModifier {
             content
                 .swipeActions(edge: .leading, allowsFullSwipe: true) {
                     Button {
+                        if item.completed { Haptics.tap() } else { Haptics.success() }
                         withAnimation(.snappy(duration: 0.2)) { store.setStatus(item.id, item.completed ? .due : .done) }
                     } label: {
                         Label(item.completed ? "Reopen" : "Done", systemImage: item.completed ? "arrow.uturn.backward" : "checkmark")
                     }
                     .tint(.accentColor)
                     Button {
+                        Haptics.tap()
                         store.edit(item.id, item.isNow ? "Remove from Now" : "Add to Now") { $0.isNow.toggle() }
                     } label: {
                         Label(item.isNow ? "Not Now" : "Now", systemImage: item.isNow ? "sun.min" : "sun.max.fill")
@@ -295,6 +302,7 @@ struct TaskActions: ViewModifier {
                 }
                 .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                     Button(role: .destructive) {
+                        Haptics.thud()
                         withAnimation(.snappy(duration: 0.2)) { store.delete(subtreeIDs) }
                     } label: {
                         Label("Delete", systemImage: "trash")
@@ -315,6 +323,7 @@ struct TaskActions: ViewModifier {
     }
 
     private func showDetails() {
+        Haptics.tap()
         store.select(item.id)
         store.isSidebarOpen = true
     }

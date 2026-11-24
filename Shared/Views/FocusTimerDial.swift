@@ -38,7 +38,7 @@ struct FocusTimerDisplay: View {
         switch style {
         case .digits:
             Text(timer.formattedTime)
-                .font(.system(size: 88, weight: .light, design: .rounded))
+                .font(.system(size: Self.dialSize * 0.44, weight: .light, design: .rounded)) // 88 on the Mac
                 .monospacedDigit()
                 .foregroundStyle(timer.isComplete ? Color.green : Color.accentColor)
                 .contentTransition(.numericText(countsDown: true))
@@ -103,7 +103,12 @@ struct FocusTimerDisplay: View {
         }
     }
 
+    #if os(iOS)
+    /// The orb is the focus screen's centerpiece on a phone.
+    static let dialSize: CGFloat = 264
+    #else
     static let dialSize: CGFloat = 200
+    #endif
 
     /// A shader-drawn orb under the glass shell, with a soft glow pooling beneath it as it fills.
     private func shaderOrb(_ kind: OrbMetalView.Kind, glow: Color) -> some View {

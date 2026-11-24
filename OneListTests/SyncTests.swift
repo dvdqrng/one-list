@@ -104,7 +104,8 @@ struct SyncTests {
             batch.append(item)
         }
         store.applyRemote(batch, deleted: [])
-        let remote = store.items.filter { $0.title.hasPrefix("Remote") }
+        let ids = Set(batch.map(\.id)) // the scratch database is shared between runs
+        let remote = store.items.filter { ids.contains($0.id) }
         #expect(remote.map(\.position) == [1_003, 1_017, 1_040])
     }
 }

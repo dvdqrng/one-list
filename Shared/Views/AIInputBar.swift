@@ -109,12 +109,14 @@ struct AIInputBar: View {
             return
         }
         if dictation.isListening { dictation.stop() }
+        Haptics.tap()
         isProcessing = true
         feedback = nil
         Task {
             defer { isProcessing = false }
             do {
                 if try await store.processText(input) {
+                    Haptics.success()
                     input = ""
                 } else {
                     show(.error, input.count > 500
@@ -129,6 +131,7 @@ struct AIInputBar: View {
     }
 
     private func toggleRecording() {
+        Haptics.tap()
         if dictation.isListening {
             dictation.stop()
             focused = true
@@ -141,6 +144,7 @@ struct AIInputBar: View {
     }
 
     private func show(_ kind: FeedbackKind, _ message: String, for seconds: Double) {
+        Haptics.warning()
         feedback = (kind, message)
         feedbackTask?.cancel()
         feedbackTask = Task {

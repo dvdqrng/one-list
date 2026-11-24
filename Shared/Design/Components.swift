@@ -213,3 +213,31 @@ struct SectionLabel: View {
             .padding(.leading, Metrics.rowPadding)
     }
 }
+
+// MARK: - Floating buttons
+
+/// A round (or pill) button floating on Liquid Glass — focus controls, the minimized focus pill and other
+/// buttons that hover over content. `prominent` tints it with the accent: the one main action on screen.
+struct FloatingButtonStyle: ButtonStyle {
+    var prominent = false
+    var size: CGFloat = 52
+    /// Pill instead of circle (for labels with text).
+    var pill = false
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.system(size: size * 0.36, weight: .semibold))
+            .foregroundStyle(prominent ? Color.white : Color.primary)
+            .frame(minWidth: size, minHeight: size)
+            .padding(.horizontal, pill ? size * 0.36 : 0)
+            .background {
+                if prominent {
+                    Capsule().fill(Color.accentColor)
+                }
+            }
+            .glassOrMaterial(in: Capsule())
+            .contentShape(Capsule())
+            .scaleEffect(configuration.isPressed ? 0.92 : 1)
+            .animation(.snappy(duration: 0.18), value: configuration.isPressed)
+    }
+}

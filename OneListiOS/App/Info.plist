@@ -26,6 +26,8 @@
 	<false/>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>One List uses the microphone so you can dictate tasks.</string>
+	<key>NSSupportsLiveActivities</key>
+	<true/>
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>One List turns your dictation into text.</string>
 	<key>OneListCloudKitContainer</key>

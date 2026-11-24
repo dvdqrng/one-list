@@ -9,9 +9,11 @@ struct OneListIOSApp: App {
 
     init() {
         let store = AppStore()
+        let timer = FocusTimer()
         _store = State(initialValue: store)
-        _timer = State(initialValue: FocusTimer())
+        _timer = State(initialValue: timer)
         AppDelegate.sync = store.sync
+        AppDelegate.focusActivity = FocusLiveActivityController(timer: timer, store: store)
     }
 
     var body: some Scene {
@@ -26,6 +28,8 @@ struct OneListIOSApp: App {
 final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
     /// Set by the app; a silent push from iCloud means another device changed the list.
     static var sync: CloudSync?
+    /// The focus session's Live Activity (Lock Screen, Dynamic Island).
+    static var focusActivity: FocusLiveActivityController?
 
     func application(_ application: UIApplication,
                      didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {

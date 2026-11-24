@@ -35,6 +35,7 @@ struct TaskRowView: View {
             }
             StatusCheckbox(state: .init(item)) {
                 let next = StatusCheckbox.State(item).next
+                if next == .done { Haptics.success() } else { Haptics.select() }
                 withAnimation(.snappy(duration: 0.2)) { store.setStatus(item.id, next) }
             }
             .alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] + checkboxBaseline }
@@ -56,7 +57,6 @@ struct TaskRowView: View {
         .contentShape(Rectangle())
         .onTapGesture { (onTap ?? defaultTap)() }
         .animation(.snappy(duration: 0.16), value: level)
-        .sensoryFeedback(trigger: item.completed) { _, done in done ? .success : .selection }
     }
 
     private func defaultTap() {
@@ -69,7 +69,10 @@ struct TaskRowView: View {
 
     @ViewBuilder private var disclosureButton: some View {
         if let disclosure {
-            Button(action: disclosure.toggle) {
+            Button {
+                Haptics.select()
+                disclosure.toggle()
+            } label: {
                 Image(systemName: "chevron.right")
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(.tertiary)

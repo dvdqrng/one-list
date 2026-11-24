@@ -19,6 +19,13 @@ final class FocusTimer {
     /// When the running session ends; lets the dial move smoothly between the one-second ticks.
     private var deadline: Date?
     var notes = ""
+    /// iOS: the session runs on (Live Activity, floating pill) while the full-screen view is put away.
+    var isMinimized = false
+    /// Called whenever the session changes (start, pause, resume, +5 min, end, finish) — drives the Live Activity.
+    var onChange: (() -> Void)?
+
+    /// When the running session ends (nil while paused).
+    var endDate: Date? { deadline }
 
     var isComplete: Bool { timeRemaining == 0 && !isRunning }
     var formattedTime: String { String(format: "%d:%02d", timeRemaining / 60, timeRemaining % 60) }
@@ -32,8 +39,23 @@ final class FocusTimer {
         timeRemaining = duration
         self.duration = duration
         isActive = true
+        isMinimized = false
         showStatusItem()
         resume()
+    }
+
+    /// Adds time to the session (also to a finished one, which then runs again).
+    func extend(by seconds: Int = 300) {
+        timeRemaining += seconds
+        duration += seconds
+        if isRunning {
+            deadline = (deadline ?? .now) + TimeInterval(seconds)
+            cancelEndNotification()
+            scheduleEndNotification()
+            onChange?()
+        } else {
+            resume()
+        }
     }
 
     func pause() {
@@ -43,6 +65,7 @@ final class FocusTimer {
         isRunning = false
         updateStatusItem()
         cancelEndNotification()
+        onChange?()
     }
 
     func resume() {
@@ -54,6 +77,7 @@ final class FocusTimer {
         }
         updateStatusItem()
         scheduleEndNotification()
+        onChange?()
     }
 
     /// Ends the session and resets the timer.
@@ -61,7 +85,9 @@ final class FocusTimer {
         pause()
         timeRemaining = Self.defaultDuration
         isActive = false
+        isMinimized = false
         hideStatusItem()
+        onChange?()
     }
 
     /// Catches up after the app was suspended (iOS stops timers in the background).
@@ -87,7 +113,12 @@ final class FocusTimer {
     private func tick() {
         // Follow the deadline, so a late timer firing never makes the session run long.
         timeRemaining = deadline.map { max(0, Int($0.timeIntervalSinceNow.rounded())) } ?? max(0, timeRemaining - 1)
-        if timeRemaining == 0 { pause() } else { updateStatusItem() }
+        if timeRemaining == 0 {
+            Haptics.success()
+            pause()
+        } else {
+            updateStatusItem()
+        }
     }
 
     #if os(macOS)

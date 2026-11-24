@@ -26,6 +26,8 @@ struct MainView: View {
                 .safeAreaInset(edge: .bottom, spacing: 0) {
                     if store.showAIInput {
                         AIInputBar().transition(.move(edge: .bottom).combined(with: .opacity))
+                    } else if timer.isActive && timer.isMinimized {
+                        FocusPill().transition(.move(edge: .bottom).combined(with: .opacity))
                     }
                 }
                 // iPad: a side column like the Mac inspector; iPhone: a sheet.
@@ -40,14 +42,18 @@ struct MainView: View {
                 }
         }
         .animation(.snappy(duration: 0.25), value: store.showAIInput)
+        .animation(.snappy(duration: 0.3), value: timer.isMinimized)
         .sheet(item: $store.changelog) { ChangesSheet(session: $0) }
         .sheet(isPresented: $showSettings) { SettingsScreen() }
-        .fullScreenCover(isPresented: Binding(get: { timer.isActive }, set: { if !$0 { timer.end() } })) {
+        // Minimizing keeps the session running (pill, Live Activity); only End ends it.
+        .fullScreenCover(isPresented: Binding(get: { timer.isActive && !timer.isMinimized },
+                                              set: { if !$0 && timer.isActive { timer.isMinimized = true } })) {
             FocusView()
         }
         .onChange(of: appearance, initial: true) { applyAppearance() }
         .onChange(of: timer.isActive) { applyAppearance() }
         .onChange(of: undoManager, initial: true) { store.undoManager = undoManager }
+        .onChange(of: store.focusTasks) { if timer.isActive { AppDelegate.focusActivity?.update() } }
         .onChange(of: scenePhase) { _, phase in
             guard phase == .active else { return }
             store.currentDay = Calendar.current.startOfDay(for: .now)
@@ -101,8 +107,11 @@ struct MainView: View {
     @ToolbarContentBuilder private var topBar: some ToolbarContent {
         @Bindable var store = store
         ToolbarItem(placement: .topBarLeading) {
-            Button { timer.start() } label: {
-                Label("Start Focus Session", systemImage: "timer")
+            Button {
+                Haptics.thud()
+                if timer.isActive { timer.isMinimized = false } else { timer.start() }
+            } label: {
+                Label(timer.isActive ? "Show Focus Session" : "Start Focus Session", systemImage: "timer")
             }
         }
 
@@ -165,11 +174,12 @@ struct MainView: View {
     /// AI composer and New Task; search joins them on iOS 26 (see `SearchAndBottomBar`).
     private var bottomBar: some View {
         HStack {
-            Button { store.showAIInput = true } label: {
+            Button { Haptics.tap(); store.showAIInput = true } label: {
                 Label("AI Composer", systemImage: "sparkles")
             }
             Button {
                 searchText = ""
+                Haptics.tap()
                 withAnimation(.snappy(duration: 0.2)) { store.focus(store.addItem()) }
             } label: {
                 Label("New Task", systemImage: "plus")
@@ -181,22 +191,22 @@ struct MainView: View {
     @ToolbarContentBuilder private var keyboardBar: some ToolbarContent {
         ToolbarItemGroup(placement: .keyboard) {
             if let id = store.editingID, let item = store.item(id) {
-                Button { withAnimation(.snappy(duration: 0.16)) { store.indentSelection(by: -1) } } label: {
+                Button { Haptics.tap(); withAnimation(.snappy(duration: 0.16)) { store.indentSelection(by: -1) } } label: {
                     Label("Outdent", systemImage: "decrease.indent")
                 }
                 .disabled(item.indent == 0)
-                Button { withAnimation(.snappy(duration: 0.16)) { store.indentSelection(by: 1) } } label: {
+                Button { Haptics.tap(); withAnimation(.snappy(duration: 0.16)) { store.indentSelection(by: 1) } } label: {
                     Label("Indent", systemImage: "increase.indent")
                 }
-                Button { store.edit(id, item.isNow ? "Remove from Now" : "Add to Now") { $0.isNow.toggle() } } label: {
+                Button { Haptics.tap(); store.edit(id, item.isNow ? "Remove from Now" : "Add to Now") { $0.isNow.toggle() } } label: {
                     Label(item.isNow ? "Remove from Now" : "Add to Now", systemImage: item.isNow ? "sun.max.fill" : "sun.max")
                 }
                 Menu {
                     ForEach([DueCategory.today, .tomorrow, .thisWeek, .later], id: \.self) { category in
-                        Button(category.label) { store.move(id, into: .due(category)) }
+                        Button(category.label) { Haptics.select(); store.move(id, into: .due(category)) }
                     }
                     Divider()
-                    Button("No Due Date") { store.edit(id, "Change Due Date") { $0.dueDate = nil } }
+                    Button("No Due Date") { Haptics.select(); store.edit(id, "Change Due Date") { $0.dueDate = nil } }
                 } label: {
                     Label("Due Date", systemImage: item.dueDate == nil ? "calendar" : "calendar.badge.checkmark")
                 }

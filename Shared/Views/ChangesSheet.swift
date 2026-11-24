@@ -83,6 +83,7 @@ struct ChangesSheet: View {
                     Button("Cancel", role: .cancel) { close() }
                         .keyboardShortcut(.cancelAction)
                     Button(selected.count == session.changes.count ? "Apply All" : "Apply \(selected.count)") {
+                        Haptics.success()
                         withAnimation(.snappy) { store.apply(session.changes.filter { selected.contains($0.id) }) }
                     }
                     .keyboardShortcut(.defaultAction)
