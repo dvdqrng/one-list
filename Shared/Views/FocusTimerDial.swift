@@ -33,6 +33,8 @@ struct FocusTimerDisplay: View {
     @Environment(FocusTimer.self) private var timer
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let style: FocusTimerStyle
+    /// Off for the miniatures: a tiny orb isn't worth running the motion sensor and 60 fps for.
+    var followsMotion = true
 
     var body: some View {
         switch style {
@@ -125,7 +127,7 @@ struct FocusTimerDisplay: View {
                 .frame(width: Self.dialSize * 0.7, height: Self.dialSize * 0.12)
                 .blur(radius: 22)
                 .offset(y: Self.dialSize * 0.56)
-            OrbMetalView(kind: kind, timer: timer, animate: timer.isRunning && !reduceMotion, tilt: Self.followsTilt && !reduceMotion)
+            OrbMetalView(kind: kind, timer: timer, animate: timer.isRunning && !reduceMotion, tilt: Self.followsTilt && followsMotion && !reduceMotion)
                 .frame(width: Self.dialSize + 2 * OrbMetalView.margin, height: Self.dialSize + 2 * OrbMetalView.margin)
             GlassShell()
                 .frame(width: Self.dialSize + 2 * CandleDial.bleed, height: Self.dialSize + 2 * CandleDial.bleed)

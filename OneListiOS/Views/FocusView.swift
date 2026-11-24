@@ -175,12 +175,7 @@ struct FocusView: View {
     /// While typing (iPhone): a small orb, the time and pause, plus Done to put the keyboard away.
     private var compactBar: some View {
         HStack(spacing: 12) {
-            // The digits are the time itself; other styles get a miniature next to it.
-            FocusTimerDisplay(style: [.digits, .pieWithTime].contains(store.focusTimerStyle) ? .pie : store.focusTimerStyle)
-                .scaleEffect(40 / FocusTimerDisplay.dialSize)
-                .frame(width: 40, height: 40)
-                .allowsHitTesting(false)
-                .accessibilityHidden(true)
+            MiniFocusOrb(size: 40)
             Text(timer.isComplete ? "Time’s up" : timer.formattedTime)
                 .font(.system(size: 20, weight: .semibold, design: .rounded))
                 .monospacedDigit()
@@ -366,10 +361,7 @@ struct FocusPill: View {
                 timer.isMinimized = false
             } label: {
                 HStack(spacing: 12) {
-                    ProgressView(value: timer.progress(at: .now))
-                        .progressViewStyle(.circular)
-                        .tint(timer.isComplete ? .green : .accentColor)
-                        .frame(width: 24, height: 24)
+                    MiniFocusOrb(size: 36)
                     VStack(alignment: .leading, spacing: 1) {
                         Text(timer.isComplete ? "Time’s up" : timer.formattedTime)
                             .font(.system(size: 17, weight: .semibold, design: .rounded))
@@ -402,11 +394,30 @@ struct FocusPill: View {
                 .accessibilityLabel(timer.isRunning ? "Pause" : "Resume")
             }
         }
-        .padding(.leading, 16)
+        .padding(.leading, 10)
         .padding(.trailing, 6)
         .padding(.vertical, 6)
+        // Tinted under the glass so the list scrolling behind doesn't read through the text.
+        .background(Capsule().fill(Color(uiColor: .systemBackground).opacity(0.55)))
         .glassOrMaterial(in: Capsule())
         .padding(.horizontal, 16)
         .padding(.bottom, 8)
+    }
+}
+
+/// The session's timer style in miniature (the pill, the folded focus bar). Digit styles show a dial,
+/// since the time is written next to it anyway.
+struct MiniFocusOrb: View {
+    @Environment(AppStore.self) private var store
+    let size: CGFloat
+
+    var body: some View {
+        let style = store.focusTimerStyle
+        FocusTimerDisplay(style: [.digits, .pieWithTime].contains(style) ? .pie : style, followsMotion: false)
+            .frame(width: FocusTimerDisplay.dialSize, height: FocusTimerDisplay.dialSize)
+            .scaleEffect(size / FocusTimerDisplay.dialSize)
+            .frame(width: size, height: size)
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
     }
 }
