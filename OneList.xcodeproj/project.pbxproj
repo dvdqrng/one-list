@@ -23,6 +23,7 @@
 		305DB84DD355A89DC01944C5 /* AISettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C72D4F937EC32DEBBDB4744 /* AISettings.swift */; };
 		3164252C68393042E3034181 /* MainView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 410FAD1C29C90325682332E4 /* MainView.swift */; };
 		32C3710EF1C003DCCCB34487 /* Haptics.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1068151865DA21F9A5B95631 /* Haptics.swift */; };
+		3377BFFA48EF6DACDA45A193 /* OrbTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 073360575B6C4A6B0B7F92CB /* OrbTests.swift */; };
 		368F8272B60A9EAD9D450330 /* FocusTimerDial.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0967E98B1CD6A6D8B466BB42 /* FocusTimerDial.swift */; };
 		3DC8D760C0E432D50864918B /* CloudSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D0976E9D291B8FEA097DE7B /* CloudSync.swift */; };
 		3DD83830FA44F5AA5FDFB575 /* OutlineListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0EA2FAAB7F4E9C8E16900D87 /* OutlineListView.swift */; };
@@ -36,6 +37,7 @@
 		4B763A9AAD01B5C0E77CDF34 /* TaskIntelligence.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0836A7E0768250D29A004926 /* TaskIntelligence.swift */; };
 		5368A8126B9951E060031AFF /* DebugSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D9A1C847C5AE8266B0E4C93 /* DebugSnapshot.swift */; };
 		56C756D26595B27992092DEC /* Components.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5BDE7A9F05962E1FE333610 /* Components.swift */; };
+		59A883524013B153721920A1 /* OrbMotion.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67F1E71CF87B29340B88561C /* OrbMotion.swift */; };
 		59B583ED6F4F3DAF5A47B87F /* UndoTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5AAF009712A31B79FABDECB6 /* UndoTests.swift */; };
 		5E0395E2020DF94E467F05AF /* OrbMetalView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C98DC9124F0DDF88999464C /* OrbMetalView.swift */; };
 		67FEA97927386DB58A97650F /* AIInputBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 89AC3EF8268AFE3CF4494271 /* AIInputBar.swift */; };
@@ -74,6 +76,7 @@
 		D27119D205AD0BD79A70CEAD /* DebugScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = 44DA700C97E12A8343E91624 /* DebugScene.swift */; };
 		D353DB91A9330009990289A7 /* FocusActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8F16C4E62CFDB126EF581F3 /* FocusActivity.swift */; };
 		D746B4FB241406E74EAF29B7 /* ChangesSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0C15CD55E5B1ED142FB3346 /* ChangesSheet.swift */; };
+		D86FEC25CD3C69434C29E92B /* OrbMotion.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67F1E71CF87B29340B88561C /* OrbMotion.swift */; };
 		DA8DBEF56B4F25CADCF3634B /* JevClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 58C700AB3D458B590F487AF8 /* JevClient.swift */; };
 		E262C0D8252832B408F4E2BF /* SpeechDictation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95E6282D92CB1599EF98D3F7 /* SpeechDictation.swift */; };
 		E397FC3A0DD7FDF84CD7D20F /* SandOrbShader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A9F1F7121C1F74A2AC25A72 /* SandOrbShader.swift */; };
@@ -129,6 +132,7 @@
 
 /* Begin PBXFileReference section */
 		003087126A73A829B80B9A24 /* UpdateChecker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateChecker.swift; sourceTree = "<group>"; };
+		073360575B6C4A6B0B7F92CB /* OrbTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OrbTests.swift; sourceTree = "<group>"; };
 		0836A7E0768250D29A004926 /* TaskIntelligence.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskIntelligence.swift; sourceTree = "<group>"; };
 		08564FF87797E54B3DD17611 /* Item.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Item.swift; sourceTree = "<group>"; };
 		08CDA6608E252B62082E5F21 /* DueDate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DueDate.swift; sourceTree = "<group>"; };
@@ -158,6 +162,7 @@
 		5A2C3538D95CF7CE3D81AB4D /* OutlineEditTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OutlineEditTests.swift; sourceTree = "<group>"; };
 		5AAF009712A31B79FABDECB6 /* UndoTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UndoTests.swift; sourceTree = "<group>"; };
 		62EA424065533EF3B5AD09BF /* TaskListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskListView.swift; sourceTree = "<group>"; };
+		67F1E71CF87B29340B88561C /* OrbMotion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OrbMotion.swift; sourceTree = "<group>"; };
 		684B71FFF14A67E50DF8C482 /* GroupingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GroupingTests.swift; sourceTree = "<group>"; };
 		6C98DC9124F0DDF88999464C /* OrbMetalView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OrbMetalView.swift; sourceTree = "<group>"; };
 		6F62C680C6BB3AB98FB79A7B /* FocusWidget.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = FocusWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -304,6 +309,7 @@
 				A99BA49C294ECB4BA238D3A9 /* DueDateTests.swift */,
 				684B71FFF14A67E50DF8C482 /* GroupingTests.swift */,
 				D7B598E0A79EECCE4FD0180D /* NoteParserTests.swift */,
+				073360575B6C4A6B0B7F92CB /* OrbTests.swift */,
 				5A2C3538D95CF7CE3D81AB4D /* OutlineEditTests.swift */,
 				184B859B841B50F16A7C8306 /* SyncTests.swift */,
 				5AAF009712A31B79FABDECB6 /* UndoTests.swift */,
@@ -386,6 +392,7 @@
 			isa = PBXGroup;
 			children = (
 				C669683AC065251EF7F4EEB2 /* FocusTimer.swift */,
+				67F1E71CF87B29340B88561C /* OrbMotion.swift */,
 				95E6282D92CB1599EF98D3F7 /* SpeechDictation.swift */,
 			);
 			path = Services;
@@ -611,6 +618,7 @@
 				1CA50DB51A07C00AE18CE50A /* DueDateTests.swift in Sources */,
 				B966B6AC3787D4C7E5DA4D94 /* GroupingTests.swift in Sources */,
 				474983E98C72675DAD5C5D6A /* NoteParserTests.swift in Sources */,
+				3377BFFA48EF6DACDA45A193 /* OrbTests.swift in Sources */,
 				43722C0ADAC2B14E30DBB621 /* OutlineEditTests.swift in Sources */,
 				1E1B86AD89A3929305865124 /* SyncTests.swift in Sources */,
 				59B583ED6F4F3DAF5A47B87F /* UndoTests.swift in Sources */,
@@ -645,6 +653,7 @@
 				92CCF1A2B5FA484EF2FD2EC6 /* NoteParser.swift in Sources */,
 				F23C1DD4A5D312873A2A4E6C /* OneListIOSApp.swift in Sources */,
 				89A8BC49BFACA4840485CA07 /* OrbMetalView.swift in Sources */,
+				59A883524013B153721920A1 /* OrbMotion.swift in Sources */,
 				F1203FB66B4BF7FD87F08DF4 /* OrbRenderer.swift in Sources */,
 				F4DF34391A52B649020C4C31 /* Outline.swift in Sources */,
 				E68E25BDD607DDB79BEBDC58 /* OutlineEdit.swift in Sources */,
@@ -687,6 +696,7 @@
 				2AB3AB4D332E288F39A958A9 /* NoteParser.swift in Sources */,
 				764EBAAD2D15389570AF9EA0 /* OneListApp.swift in Sources */,
 				5E0395E2020DF94E467F05AF /* OrbMetalView.swift in Sources */,
+				D86FEC25CD3C69434C29E92B /* OrbMotion.swift in Sources */,
 				B281D6BF1E1C05F10D4289B7 /* OrbRenderer.swift in Sources */,
 				69B0B8060E7409AB5DC225B8 /* Outline.swift in Sources */,
 				88D2344049A6E56CE38D4BEA /* OutlineEdit.swift in Sources */,

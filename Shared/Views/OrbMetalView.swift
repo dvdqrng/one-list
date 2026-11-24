@@ -33,6 +33,8 @@ struct OrbMetalView: PlatformViewRepresentable {
     let kind: Kind
     let timer: FocusTimer
     let animate: Bool
+    /// Follow the device's tilt (iOS gyro): the surface stays level with real gravity. Off with Reduce Motion.
+    var tilt = false
 
     private static let waterRenderer = OrbRenderer(source: WaterOrbShader.source)
     private static let sandRenderer = OrbRenderer(source: SandOrbShader.source)
@@ -41,6 +43,15 @@ struct OrbMetalView: PlatformViewRepresentable {
     static let margin: CGFloat = 4
 
     func makeCoordinator() -> Coordinator { Coordinator(kind: kind, timer: timer) }
+
+    #if os(macOS)
+    static func dismantleNSView(_ view: MTKView, coordinator: Coordinator) { coordinator.setTilt(false) }
+    #else
+    static func dismantleUIView(_ view: MTKView, coordinator: Coordinator) { coordinator.setTilt(false) }
+    #endif
+
+    /// Keeps drawing while tilting is on, even when paused (the clock stays frozen, the tilt still moves).
+    private var isLive: Bool { animate || tilt }
 
     #if os(macOS)
     func makeNSView(context: Context) -> MTKView { makeView(context: context) }
@@ -61,17 +72,21 @@ struct OrbMetalView: PlatformViewRepresentable {
         view.isOpaque = false
         view.backgroundColor = .clear
         #endif
-        view.preferredFramesPerSecond = 30
+        // 60 fps while following the gyro (smooth sloshing), a calm 30 otherwise.
+        view.preferredFramesPerSecond = tilt ? 60 : 30
         view.enableSetNeedsDisplay = false
-        view.isPaused = !animate
+        view.isPaused = !isLive
+        context.coordinator.setTilt(tilt)
         return view
     }
 
     private func updateView(_ view: MTKView, context: Context) {
         context.coordinator.timer = timer
         context.coordinator.animate = animate
-        view.isPaused = !animate
-        if !animate { view.draw() } // show the current state once
+        context.coordinator.setTilt(tilt)
+        view.preferredFramesPerSecond = tilt ? 60 : 30
+        view.isPaused = !isLive
+        if !isLive { view.draw() } // show the current state once
     }
 
     final class Coordinator: NSObject, MTKViewDelegate {
@@ -84,10 +99,20 @@ struct OrbMetalView: PlatformViewRepresentable {
         /// The pile/level only changes slowly; recomputed when the fill share moves noticeably.
         private var cachedVolume = -1.0
         private var cachedLevel: Float = 0
+        private var orbTilt: OrbTilt
+        private var tilting = false
+        private var lastTiltFrame: CFTimeInterval?
 
         init(kind: Kind, timer: FocusTimer) {
             self.kind = kind
             self.timer = timer
+            orbTilt = kind == .water ? .water : .sand
+        }
+
+        func setTilt(_ on: Bool) {
+            guard on != tilting else { return }
+            tilting = on
+            if on { OrbMotion.shared.start() } else { OrbMotion.shared.stop() }
         }
 
         func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {}
@@ -102,13 +127,18 @@ struct OrbMetalView: PlatformViewRepresentable {
                 cachedVolume = volume
                 cachedLevel = kind.level(forVolume: volume)
             }
+            if tilting {
+                orbTilt.step(gravity: OrbMotion.shared.gravity, dt: lastTiltFrame.map { now - $0 } ?? 0)
+                lastTiltFrame = now
+            }
             let size = view.drawableSize
             let uniforms = OrbUniforms(
                 resolution: SIMD2(Float(size.width), Float(size.height)),
                 time: Float(clock),
                 level: cachedLevel,
                 extent: Float((FocusTimerDisplay.dialSize + 2 * OrbMetalView.margin) / FocusTimerDisplay.dialSize),
-                pitch: 0.28)
+                pitch: Float(0.28 + orbTilt.pitch),
+                roll: Float(orbTilt.roll))
             guard let buffer = renderer.render(to: drawable.texture, uniforms: uniforms) else { return }
             buffer.present(drawable)
             buffer.commit()

@@ -102,8 +102,7 @@ nonisolated enum SandOrbShader {
     }
 
     fragment float4 orbFragment(VOut in [[stage_in]], constant Uniforms &u [[buffer(0)]]) {
-        float aspect = u.resolution.x / u.resolution.y;
-        float2 sp = float2(in.uv.x * aspect, in.uv.y) * u.extent;
+        float2 sp = scenePoint(in.uv, u);
         float px = 2.0 * u.extent / u.resolution.y;
         float cover = smoothstep(R_OUT, R_OUT - 1.5 * px, length(sp));
         if (cover <= 0.0) return float4(0);

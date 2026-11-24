@@ -103,6 +103,13 @@ struct FocusTimerDisplay: View {
         }
     }
 
+    /// The water and sand follow the device's tilt where there is a gyro.
+    #if os(iOS)
+    static let followsTilt = true
+    #else
+    static let followsTilt = false
+    #endif
+
     #if os(iOS)
     /// The orb is the focus screen's centerpiece on a phone.
     static let dialSize: CGFloat = 264
@@ -118,7 +125,7 @@ struct FocusTimerDisplay: View {
                 .frame(width: Self.dialSize * 0.7, height: Self.dialSize * 0.12)
                 .blur(radius: 22)
                 .offset(y: Self.dialSize * 0.56)
-            OrbMetalView(kind: kind, timer: timer, animate: timer.isRunning && !reduceMotion)
+            OrbMetalView(kind: kind, timer: timer, animate: timer.isRunning && !reduceMotion, tilt: Self.followsTilt && !reduceMotion)
                 .frame(width: Self.dialSize + 2 * OrbMetalView.margin, height: Self.dialSize + 2 * OrbMetalView.margin)
             GlassShell()
                 .frame(width: Self.dialSize + 2 * CandleDial.bleed, height: Self.dialSize + 2 * CandleDial.bleed)

@@ -12,6 +12,8 @@ struct OrbUniforms {
     var extent: Float
     /// How far the view looks down onto the water, in radians.
     var pitch: Float
+    /// Rotation of the scene on screen, in radians, so the surface stays level with real gravity (gyro).
+    var roll: Float = 0
 }
 
 /// Renders one of the shader-drawn orbs (water, sand) as a full-screen fragment shader.
@@ -79,7 +81,17 @@ final class OrbRenderer {
         float level;
         float extent;
         float pitch;
+        float roll;
     };
+
+    // Screen position in sphere radii, turned by the device roll (the sphere looks the same from every
+    // side, so turning the view is the same as the liquid staying level while the glass tilts).
+    float2 scenePoint(float2 uv, constant Uniforms &u) {
+        float aspect = u.resolution.x / u.resolution.y;
+        float2 p = float2(uv.x * aspect, uv.y) * u.extent;
+        float c = cos(u.roll), s = sin(u.roll);
+        return float2(c * p.x - s * p.y, s * p.x + c * p.y);
+    }
 
     struct VOut {
         float4 position [[position]];
