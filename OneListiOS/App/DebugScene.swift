@@ -3,7 +3,7 @@ import SwiftUI
 
 /// Development hook for visual checks in the simulator: `ONE_LIST_SCENE` opens a given state on launch,
 /// e.g. `SIMCTL_CHILD_ONE_LIST_SCENE="board,meta"`. Combine with `ONE_LIST_DATA_DIR` (a scratch folder)
-/// so real data is never touched. Keys: board, due, meta, detail=<title prefix>, focus, ai, settings,
+/// so real data is never touched. Keys: board, due, meta, detail=<title prefix>, focus (+ panel, notes), ai, settings,
 /// dark, edit=<title prefix>.
 enum DebugScene {
     static func run(store: AppStore, timer: FocusTimer, showSettings: Binding<Bool>) {

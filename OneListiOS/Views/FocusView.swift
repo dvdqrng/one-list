@@ -1,20 +1,20 @@
 import SwiftUI
 
-/// Full-screen, always-dark focus session. The orb is the centerpiece; everything else floats around it
-/// on glass: minimize and timer style at the top, the controls below the orb, and a panel at the bottom
-/// with two tabs — the "Now" tasks and a scratchpad for distractions (turned into tasks afterwards).
-/// The panel stays closed by default so nothing competes with the orb.
+/// Full-screen, always-dark focus session. The orb is the centerpiece, with floating controls around it.
+/// Tasks and notes live in a persistent bottom sheet (as in Maps or Music): collapsed to a segmented
+/// Tasks / Notes header by default, pulled up to half height to work alongside the orb, and full height
+/// while typing, so the keyboard never covers what's being edited.
 struct FocusView: View {
     @Environment(AppStore.self) private var store
     @Environment(FocusTimer.self) private var timer
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var tab: Tab = .tasks
-    @State private var isPanelOpen = false
-    @State private var newTaskTitle = ""
-    @FocusState private var focusedField: Field?
+    @State private var showsPanel = true
+    @State private var tab: FocusPanel.Tab = .tasks
+    @State private var detent: PresentationDetent = FocusPanel.collapsed
+    @State private var panelHeight: CGFloat = FocusPanel.collapsedHeight
 
-    private enum Tab { case tasks, notes }
-    private enum Field { case newTask, notes }
+    /// The orb shrinks when the sheet is pulled up, so it and the controls stay visible above it.
+    private var isPanelRaised: Bool { panelHeight > FocusPanel.collapsedHeight + 60 }
 
     var body: some View {
         ZStack(alignment: .top) {
@@ -26,11 +26,12 @@ struct FocusView: View {
                 orb
                 Spacer(minLength: 12)
                 controls
-                    .padding(.bottom, 28)
-                panel
+                    .padding(.bottom, 24)
             }
             .frame(maxWidth: 600)
             .frame(maxWidth: .infinity)
+            // Make room for the sheet (its height includes the bottom safe area this view already avoids).
+            .padding(.bottom, max(0, panelHeight - 20))
 
             if timer.isComplete {
                 Label("Time’s up — great focus session!", systemImage: "party.popper.fill")
@@ -43,9 +44,32 @@ struct FocusView: View {
             }
         }
         .environment(\.colorScheme, .dark)
-        .statusBarHidden(timer.isRunning && !isPanelOpen)
-        .animation(reduceMotion ? nil : .snappy(duration: 0.3), value: isPanelOpen)
+        .statusBarHidden(timer.isRunning && !isPanelRaised)
+        .animation(reduceMotion ? nil : .snappy(duration: 0.3), value: isPanelRaised)
         .animation(.snappy(duration: 0.3), value: timer.isComplete)
+        .sheet(isPresented: $showsPanel) {
+            FocusPanel(tab: $tab, detent: $detent)
+                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { panelHeight = $0 }
+                .presentationDetents([FocusPanel.collapsed, .medium, .large], selection: $detent)
+                .presentationBackgroundInteraction(.enabled(upThrough: .medium))
+                .presentationContentInteraction(.scrolls)
+                .presentationDragIndicator(.visible)
+                .interactiveDismissDisabled()
+                .preferredColorScheme(.dark)
+        }
+        #if DEBUG
+        .onAppear {
+            let scene = ProcessInfo.processInfo.environment["ONE_LIST_SCENE"] ?? ""
+            if scene.contains("panel") { detent = .medium }
+            if scene.contains("notes") { tab = .notes }
+        }
+        #endif
+    }
+
+    /// Takes the sheet down with the focus screen.
+    private func leave(_ action: () -> Void) {
+        showsPanel = false
+        action()
     }
 
     // MARK: Top
@@ -55,8 +79,7 @@ struct FocusView: View {
         return HStack {
             Button {
                 Haptics.tap()
-                focusedField = nil
-                timer.isMinimized = true
+                leave { timer.isMinimized = true }
             } label: {
                 Image(systemName: "chevron.down")
             }
@@ -88,7 +111,7 @@ struct FocusView: View {
         let style = store.focusTimerStyle
         // Styles without digits get the time underneath, small and quiet.
         let showsTime = style != .digits && style != .pieWithTime
-        let scale = isPanelOpen ? 0.6 : 1.0
+        let scale = isPanelRaised ? 0.55 : 1.0
         return VStack(spacing: 20 * scale) {
             FocusTimerDisplay(style: style)
                 .scaleEffect(scale)
@@ -153,164 +176,7 @@ struct FocusView: View {
         }
     }
 
-    // MARK: Panel (Tasks / Notes)
-
-    private var panel: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 4) {
-                tabButton(.tasks, title: "Tasks", count: store.focusTasks.filter { !$0.completed }.count)
-                tabButton(.notes, title: "Notes", count: nil)
-                Spacer()
-                if isPanelOpen {
-                    if tab == .tasks { filterMenu }
-                    Button {
-                        Haptics.select()
-                        focusedField = nil
-                        isPanelOpen = false
-                    } label: {
-                        Image(systemName: "chevron.down")
-                            .font(.system(size: 15, weight: .semibold))
-                            .frame(width: 44, height: 44)
-                    }
-                    .foregroundStyle(.secondary)
-                    .accessibilityLabel("Close Panel")
-                }
-            }
-
-            if isPanelOpen {
-                Group {
-                    switch tab {
-                    case .tasks: tasks
-                    case .notes: notes
-                    }
-                }
-                .frame(height: 300)
-                .transition(.opacity)
-            }
-        }
-        .padding(8)
-        .glassOrMaterial(in: RoundedRectangle(cornerRadius: 28, style: .continuous))
-        .padding(.horizontal, 12)
-        .padding(.bottom, 8)
-    }
-
-    private func tabButton(_ value: Tab, title: String, count: Int?) -> some View {
-        let selected = isPanelOpen && tab == value
-        return Button {
-            Haptics.select()
-            if selected {
-                isPanelOpen = false
-                focusedField = nil
-            } else {
-                tab = value
-                isPanelOpen = true
-            }
-        } label: {
-            HStack(spacing: 6) {
-                Text(title)
-                if let count, count > 0 {
-                    Text("\(count)").monospacedDigit().foregroundStyle(.secondary)
-                }
-                if value == .notes && !timer.notes.isEmpty {
-                    Circle().fill(Color.accentColor).frame(width: 6, height: 6)
-                }
-            }
-            .font(.system(size: 15, weight: .semibold))
-            .padding(.horizontal, 16)
-            .frame(height: 44)
-            .background(Capsule().fill(selected ? Color.white.opacity(0.14) : Color.clear))
-            .contentShape(Capsule())
-        }
-        .buttonStyle(.plain)
-        .accessibilityAddTraits(selected ? .isSelected : [])
-    }
-
-    private var filterMenu: some View {
-        @Bindable var store = store
-        return Menu {
-            Toggle("Show Earlier Completed Tasks", isOn: $store.focusShowCompleted)
-            Toggle("Show Priority, Dates & Categories", isOn: $store.focusShowMetadata)
-        } label: {
-            Image(systemName: "line.3.horizontal.decrease.circle")
-                .font(.system(size: 17))
-                .frame(width: 44, height: 44)
-        }
-        .foregroundStyle(.secondary)
-        .accessibilityLabel("View Options")
-    }
-
-    private var tasks: some View {
-        let tasks = store.focusTasks
-        return ScrollView {
-            VStack(alignment: .leading, spacing: 0) {
-                ForEach(tasks) { item in
-                    TaskRowView(item: item, showMetadata: store.focusShowMetadata, onTap: {})
-                }
-                addTaskRow
-                if tasks.isEmpty {
-                    Text(store.nowTodos.isEmpty
-                         ? "Add what you want to get done in this session."
-                         : "Everything here is done. Earlier completed tasks are hidden.")
-                        .font(.callout)
-                        .foregroundStyle(.tertiary)
-                        .padding(.leading, Metrics.checkbox + Metrics.checkboxGap)
-                }
-            }
-            .padding(.horizontal, 12)
-        }
-        .scrollDismissesKeyboard(.interactively)
-    }
-
-    /// Adds tasks straight to "Now"; stays focused so several can be added in a row.
-    private var addTaskRow: some View {
-        HStack(spacing: Metrics.checkboxGap) {
-            Image(systemName: "plus")
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(.tertiary)
-                .frame(width: Metrics.checkbox, height: Metrics.checkbox)
-            TextField("Add a task", text: $newTaskTitle)
-                .font(.system(size: Metrics.taskFont))
-                .focused($focusedField, equals: .newTask)
-                .submitLabel(.next)
-                .onSubmit(addTask)
-        }
-        .frame(minHeight: Metrics.rowHeight)
-        .contentShape(Rectangle())
-        .onTapGesture { focusedField = .newTask }
-    }
-
-    private var notes: some View {
-        @Bindable var timer = timer
-        return TextEditor(text: $timer.notes)
-            .font(.body)
-            .focused($focusedField, equals: .notes)
-            .scrollContentBackground(.hidden)
-            .padding(.horizontal, 12)
-            .overlay(alignment: .topLeading) {
-                if timer.notes.isEmpty {
-                    Text("Jot down anything that pops into your head — it becomes tasks afterwards.")
-                        .foregroundStyle(.tertiary)
-                        .padding(.horizontal, 17).padding(.vertical, 8)
-                        .allowsHitTesting(false)
-                }
-            }
-    }
-
     // MARK: Actions
-
-    private func addTask() {
-        let title = newTaskTitle.trimmingCharacters(in: .whitespaces)
-        guard !title.isEmpty else { return }
-        Haptics.tap()
-        withAnimation(.snappy(duration: 0.2)) {
-            _ = store.addItem { item in
-                item.title = title
-                item.isNow = true
-            }
-        }
-        newTaskTitle = ""
-        focusedField = .newTask
-    }
 
     private func nextTimerStyle() {
         Haptics.select()
@@ -323,10 +189,9 @@ struct FocusView: View {
     /// line simply becomes a task in "Now").
     private func finish() {
         Haptics.thud()
-        focusedField = nil
         let notes = timer.notes.trimmingCharacters(in: .whitespacesAndNewlines)
         timer.notes = ""
-        timer.end()
+        leave { timer.end() }
         guard !notes.isEmpty else { return }
         Task {
             if store.settings.hasApiKey {

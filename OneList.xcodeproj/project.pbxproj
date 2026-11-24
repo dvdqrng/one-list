@@ -71,6 +71,7 @@
 		B281D6BF1E1C05F10D4289B7 /* OrbRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A494E8CC02C2BDD386C961AA /* OrbRenderer.swift */; };
 		B60123A7C90284B9E533376D /* WaterOrbShader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50B14C1B3E31096856FA67E1 /* WaterOrbShader.swift */; };
 		B966B6AC3787D4C7E5DA4D94 /* GroupingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 684B71FFF14A67E50DF8C482 /* GroupingTests.swift */; };
+		C46DDB47E7B19F45EC112EAD /* FocusPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53F1B2D149D364A4E63CEE90 /* FocusPanel.swift */; };
 		C5FB2FD3CFE458255B9BC0B2 /* FocusActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8F16C4E62CFDB126EF581F3 /* FocusActivity.swift */; };
 		CDC528AE44F71E2780304838 /* SettingsScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E73057D663A29D0F594BD27 /* SettingsScreen.swift */; };
 		D27119D205AD0BD79A70CEAD /* DebugScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = 44DA700C97E12A8343E91624 /* DebugScene.swift */; };
@@ -158,6 +159,7 @@
 		4E54528E8C0D2BD7B32584C3 /* TaskInspector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskInspector.swift; sourceTree = "<group>"; };
 		50B14C1B3E31096856FA67E1 /* WaterOrbShader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WaterOrbShader.swift; sourceTree = "<group>"; };
 		5399E7094A5035E60FCCF08D /* KanbanView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KanbanView.swift; sourceTree = "<group>"; };
+		53F1B2D149D364A4E63CEE90 /* FocusPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FocusPanel.swift; sourceTree = "<group>"; };
 		58C700AB3D458B590F487AF8 /* JevClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JevClient.swift; sourceTree = "<group>"; };
 		5A2C3538D95CF7CE3D81AB4D /* OutlineEditTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OutlineEditTests.swift; sourceTree = "<group>"; };
 		5AAF009712A31B79FABDECB6 /* UndoTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UndoTests.swift; sourceTree = "<group>"; };
@@ -344,6 +346,7 @@
 			isa = PBXGroup;
 			children = (
 				80E8EC34C1FCBE97F3810BD3 /* BoardView.swift */,
+				53F1B2D149D364A4E63CEE90 /* FocusPanel.swift */,
 				37357B73D785883AA0BDABF2 /* FocusView.swift */,
 				410FAD1C29C90325682332E4 /* MainView.swift */,
 				0EA2FAAB7F4E9C8E16900D87 /* OutlineListView.swift */,
@@ -642,6 +645,7 @@
 				AF61CCD2D3C3E6CEBA0D1A1F /* DueDate.swift in Sources */,
 				C5FB2FD3CFE458255B9BC0B2 /* FocusActivity.swift in Sources */,
 				840B329075B1D8D2AF286158 /* FocusLiveActivityController.swift in Sources */,
+				C46DDB47E7B19F45EC112EAD /* FocusPanel.swift in Sources */,
 				E91D71B70E74C420921EF7CE /* FocusTimer.swift in Sources */,
 				AFE9CDB6FC416963DE82CAD7 /* FocusTimerDial.swift in Sources */,
 				E682BBC376127893778ACC6D /* FocusView.swift in Sources */,
