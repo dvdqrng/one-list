@@ -45,11 +45,17 @@ struct MainView: View {
         .animation(.snappy(duration: 0.3), value: timer.isMinimized)
         .sheet(item: $store.changelog) { ChangesSheet(session: $0) }
         .sheet(isPresented: $showSettings) { SettingsScreen() }
-        // Minimizing keeps the session running (pill, Live Activity); only End ends it.
-        .fullScreenCover(isPresented: Binding(get: { timer.isActive && !timer.isMinimized },
-                                              set: { if !$0 && timer.isActive { timer.isMinimized = true } })) {
-            FocusView()
+        // The focus session covers the app in place (no sheet): it grows out of and shrinks back into the
+        // app; minimizing keeps it running (pill, Live Activity), only End ends it.
+        .overlay {
+            if showsFocus {
+                FocusView()
+                    .transition(.asymmetric(insertion: .opacity.combined(with: .scale(scale: 0.96)),
+                                            removal: .opacity.combined(with: .scale(scale: 0.96))))
+                    .accessibilityAddTraits(.isModal)
+            }
         }
+        .animation(.smooth(duration: 0.35), value: showsFocus)
         .onChange(of: appearance, initial: true) { applyAppearance() }
         .onChange(of: timer.isActive) { applyAppearance() }
         .onChange(of: undoManager, initial: true) { store.undoManager = undoManager }
@@ -82,6 +88,8 @@ struct MainView: View {
             }
         }
     }
+
+    private var showsFocus: Bool { timer.isActive && !timer.isMinimized }
 
     private var subtitle: String {
         let open = store.todos.filter { !$0.completed && !$0.title.isEmpty }.count

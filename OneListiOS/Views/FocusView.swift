@@ -92,13 +92,13 @@ struct FocusView: View {
             }
             .frame(height: top)
             .frame(maxWidth: .infinity)
+            .clipped() // before the background, which runs up under the status bar
             .background {
                 UnevenRoundedRectangle(bottomLeadingRadius: Self.cardRadius, bottomTrailingRadius: Self.cardRadius,
                                        style: .continuous)
                     .fill(Self.cardColor)
                     .ignoresSafeArea(edges: .top)
             }
-            .clipped()
 
             handle(height: height)
 
