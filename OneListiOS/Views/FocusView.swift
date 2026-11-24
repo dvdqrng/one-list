@@ -1,75 +1,114 @@
 import SwiftUI
 
-/// Full-screen, always-dark focus session. The orb is the centerpiece, with floating controls around it.
-/// Tasks and notes live in a persistent bottom sheet (as in Maps or Music): collapsed to a segmented
-/// Tasks / Notes header by default, pulled up to half height to work alongside the orb, and full height
-/// while typing, so the keyboard never covers what's being edited.
+/// Full-screen, always-dark focus session, split in two: the orb with its controls, and the "Now" tasks
+/// or distraction notes. iPhone portrait stacks them (orb on top); iPad and landscape put them side by
+/// side. While typing on iPhone the orb half folds into a compact bar so the list gets the room above
+/// the keyboard.
 struct FocusView: View {
     @Environment(AppStore.self) private var store
     @Environment(FocusTimer.self) private var timer
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var showsPanel = true
     @State private var tab: FocusPanel.Tab = .tasks
-    @State private var detent: PresentationDetent = FocusPanel.collapsed
-    @State private var panelHeight: CGFloat = FocusPanel.collapsedHeight
-
-    /// The orb shrinks when the sheet is pulled up, so it and the controls stay visible above it.
-    private var isPanelRaised: Bool { panelHeight > FocusPanel.collapsedHeight + 60 }
+    @State private var isEditing = false
 
     var body: some View {
-        ZStack(alignment: .top) {
-            Color.black.ignoresSafeArea()
+        GeometryReader { geo in
+            let sideBySide = geo.size.width > geo.size.height && geo.size.width > 600
+            ZStack(alignment: .top) {
+                Color.black.ignoresSafeArea()
 
-            VStack(spacing: 0) {
-                topBar
-                Spacer(minLength: 12)
-                orb
-                Spacer(minLength: 12)
-                controls
-                    .padding(.bottom, 24)
-            }
-            .frame(maxWidth: 600)
-            .frame(maxWidth: .infinity)
-            // Make room for the sheet (its height includes the bottom safe area this view already avoids).
-            .padding(.bottom, max(0, panelHeight - 20))
+                if sideBySide {
+                    HStack(spacing: 0) {
+                        orbSide(height: geo.size.height, compact: false)
+                            .frame(maxWidth: .infinity)
+                        FocusPanel(tab: $tab, isEditing: $isEditing)
+                            .frame(width: min(440, geo.size.width * 0.45))
+                    }
+                } else {
+                    VStack(spacing: 0) {
+                        if isEditing {
+                            compactBar
+                                .transition(.move(edge: .top).combined(with: .opacity))
+                        } else {
+                            orbSide(height: geo.size.height * 0.52, compact: true)
+                                .frame(height: geo.size.height * 0.52)
+                                .transition(.move(edge: .top).combined(with: .opacity))
+                        }
+                        FocusPanel(tab: $tab, isEditing: $isEditing)
+                    }
+                }
 
-            if timer.isComplete {
-                Label("Time’s up — great focus session!", systemImage: "party.popper.fill")
-                    .font(.headline)
-                    .padding(.horizontal, 18).padding(.vertical, 10)
-                    .glassOrMaterial(in: Capsule())
-                    .modifier(Pulse())
-                    .padding(.top, 64)
-                    .transition(.move(edge: .top).combined(with: .opacity))
+                if timer.isComplete && !isEditing {
+                    Label("Time’s up — great focus session!", systemImage: "party.popper.fill")
+                        .font(.headline)
+                        .padding(.horizontal, 18).padding(.vertical, 10)
+                        .glassOrMaterial(in: Capsule())
+                        .modifier(Pulse())
+                        .padding(.top, 64)
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                }
             }
         }
         .environment(\.colorScheme, .dark)
-        .statusBarHidden(timer.isRunning && !isPanelRaised)
-        .animation(reduceMotion ? nil : .snappy(duration: 0.3), value: isPanelRaised)
+        .statusBarHidden(timer.isRunning && !isEditing)
+        .animation(reduceMotion ? nil : .snappy(duration: 0.3), value: isEditing)
         .animation(.snappy(duration: 0.3), value: timer.isComplete)
-        .sheet(isPresented: $showsPanel) {
-            FocusPanel(tab: $tab, detent: $detent)
-                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { panelHeight = $0 }
-                .presentationDetents([FocusPanel.collapsed, .medium, .large], selection: $detent)
-                .presentationBackgroundInteraction(.enabled(upThrough: .medium))
-                .presentationContentInteraction(.scrolls)
-                .presentationDragIndicator(.visible)
-                .interactiveDismissDisabled()
-                .preferredColorScheme(.dark)
-        }
         #if DEBUG
         .onAppear {
             let scene = ProcessInfo.processInfo.environment["ONE_LIST_SCENE"] ?? ""
-            if scene.contains("panel") { detent = .medium }
             if scene.contains("notes") { tab = .notes }
         }
         #endif
     }
 
-    /// Takes the sheet down with the focus screen.
-    private func leave(_ action: () -> Void) {
-        showsPanel = false
-        action()
+    /// Top bar, orb and controls, with the orb scaled to the space it gets.
+    private func orbSide(height: CGFloat, compact: Bool) -> some View {
+        // Top bar ~60, time ~40, controls ~80 + spacing.
+        let room = height - (compact ? 230 : 300)
+        let scale = min(1, max(0.45, room / FocusTimerDisplay.dialSize))
+        return VStack(spacing: 0) {
+            topBar
+            Spacer(minLength: 8)
+            orb(scale: scale)
+            Spacer(minLength: 8)
+            controls
+                .padding(.bottom, compact ? 16 : 32)
+        }
+    }
+
+    /// While typing (iPhone): a small orb, the time and pause, plus Done to put the keyboard away.
+    private var compactBar: some View {
+        HStack(spacing: 12) {
+            FocusTimerDisplay(style: store.focusTimerStyle)
+                .scaleEffect(40 / FocusTimerDisplay.dialSize)
+                .frame(width: 40, height: 40)
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+            Text(timer.isComplete ? "Time’s up" : timer.formattedTime)
+                .font(.system(size: 20, weight: .semibold, design: .rounded))
+                .monospacedDigit()
+                .contentTransition(.numericText(countsDown: true))
+            Spacer()
+            if !timer.isComplete {
+                Button {
+                    Haptics.tap()
+                    if timer.isRunning { timer.pause() } else { timer.resume() }
+                } label: {
+                    Image(systemName: timer.isRunning ? "pause.fill" : "play.fill")
+                        .contentTransition(.symbolEffect(.replace))
+                }
+                .buttonStyle(FloatingButtonStyle(size: 44))
+                .accessibilityLabel(timer.isRunning ? "Pause" : "Resume")
+            }
+            Button("Done") {
+                Haptics.tap()
+                UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+            }
+            .buttonStyle(FloatingButtonStyle(size: 44, pill: true))
+            .font(.system(size: 17, weight: .semibold))
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 8)
     }
 
     // MARK: Top
@@ -79,7 +118,7 @@ struct FocusView: View {
         return HStack {
             Button {
                 Haptics.tap()
-                leave { timer.isMinimized = true }
+                timer.isMinimized = true
             } label: {
                 Image(systemName: "chevron.down")
             }
@@ -107,12 +146,11 @@ struct FocusView: View {
 
     // MARK: Orb
 
-    private var orb: some View {
+    private func orb(scale: CGFloat) -> some View {
         let style = store.focusTimerStyle
         // Styles without digits get the time underneath, small and quiet.
         let showsTime = style != .digits && style != .pieWithTime
-        let scale = isPanelRaised ? 0.55 : 1.0
-        return VStack(spacing: 20 * scale) {
+        return VStack(spacing: 16 * scale) {
             FocusTimerDisplay(style: style)
                 .scaleEffect(scale)
                 .frame(height: FocusTimerDisplay.dialSize * scale + (style == .pieWithTime ? 36 : 0))
@@ -191,7 +229,7 @@ struct FocusView: View {
         Haptics.thud()
         let notes = timer.notes.trimmingCharacters(in: .whitespacesAndNewlines)
         timer.notes = ""
-        leave { timer.end() }
+        timer.end()
         guard !notes.isEmpty else { return }
         Task {
             if store.settings.hasApiKey {

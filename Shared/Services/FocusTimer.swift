@@ -162,7 +162,8 @@ final class FocusTimer {
     /// Announces the end of the session even when the app is in the background.
     private func scheduleEndNotification() {
         let seconds = TimeInterval(timeRemaining)
-        guard seconds > 0 else { return }
+        // Scratch-data runs (screenshots, tests) skip the permission prompt.
+        guard seconds > 0, ProcessInfo.processInfo.environment["ONE_LIST_DATA_DIR"] == nil else { return }
         Task {
             let center = UNUserNotificationCenter.current()
             guard (try? await center.requestAuthorization(options: [.alert, .sound])) == true else { return }

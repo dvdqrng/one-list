@@ -1,17 +1,15 @@
 import SwiftUI
 
-/// The focus screen's bottom sheet: a segmented Tasks / Notes header, then the "Now" tasks as a native
+/// The focus screen's task side: a segmented Tasks / Notes header, then the "Now" tasks as a native
 /// list (drag to reorder, tap to edit, swipe to remove) or the distraction notes.
 struct FocusPanel: View {
     enum Tab: Hashable { case tasks, notes }
 
-    static let collapsedHeight: CGFloat = 76
-    static let collapsed = PresentationDetent.height(collapsedHeight)
-
     @Environment(AppStore.self) private var store
     @Environment(FocusTimer.self) private var timer
     @Binding var tab: Tab
-    @Binding var detent: PresentationDetent
+    /// A field has the keyboard (the iPhone layout folds the orb away meanwhile).
+    @Binding var isEditing: Bool
     @State private var newTaskTitle = ""
     @FocusState private var focus: Field?
 
@@ -20,21 +18,12 @@ struct FocusPanel: View {
     var body: some View {
         VStack(spacing: 0) {
             header
-            if detent != Self.collapsed {
-                switch tab {
-                case .tasks: tasks
-                case .notes: notes
-                }
+            switch tab {
+            case .tasks: tasks
+            case .notes: notes
             }
-            Spacer(minLength: 0)
         }
-        // Typing gets the full height, so the keyboard never covers the row being edited.
-        .onChange(of: focus) { _, field in
-            if field != nil, detent != .large { withAnimation(.snappy) { detent = .large } }
-        }
-        .onChange(of: detent) { _, new in
-            if new == Self.collapsed { focus = nil }
-        }
+        .onChange(of: focus) { _, field in isEditing = field != nil }
     }
 
     // MARK: Header
@@ -62,7 +51,8 @@ struct FocusPanel: View {
         }
         .padding(.leading, 20)
         .padding(.trailing, 8)
-        .padding(.top, 18)
+        .padding(.top, 8)
+        .padding(.bottom, 4)
     }
 
     private var taskTabTitle: String {
@@ -70,12 +60,9 @@ struct FocusPanel: View {
         return open > 0 ? "Tasks \(open)" : "Tasks"
     }
 
-    /// Picking a tab while the sheet is collapsed opens it.
     private func select(_ value: Tab) {
         Haptics.select()
         tab = value
-        focus = nil
-        if detent == Self.collapsed { withAnimation(.snappy) { detent = .medium } }
     }
 
     // MARK: Tasks
