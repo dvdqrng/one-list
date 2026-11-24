@@ -23,21 +23,30 @@ struct FocusLiveActivity: Widget {
             let finished = state.isFinished || context.isStale
             return DynamicIsland {
                 DynamicIslandExpandedRegion(.leading) {
-                    FocusRing(state: state, finished: finished)
-                        .frame(width: 44, height: 44)
-                        .padding(.leading, 4)
+                    HStack(spacing: 6) {
+                        FocusRing(state: state, finished: finished, lineWidth: 3)
+                            .frame(width: 16, height: 16)
+                        Text(finished ? "Done" : state.isRunning ? "Focus" : "Paused")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(.leading, 6)
+                    .frame(maxHeight: .infinity)
                 }
                 DynamicIslandExpandedRegion(.trailing) {
-                    Countdown(state: state, finished: finished)
+                    Countdown(state: state, finished: finished, alignment: .trailing)
                         .font(.system(size: 34, weight: .light, design: .rounded))
-                        .frame(maxWidth: 120, alignment: .trailing)
-                        .padding(.trailing, 4)
-                }
-                DynamicIslandExpandedRegion(.center) {
-                    TaskLabel(state: state, finished: finished)
+                        .frame(maxWidth: 130, alignment: .trailing)
+                        .padding(.trailing, 6)
                 }
                 DynamicIslandExpandedRegion(.bottom) {
-                    if !finished { FocusControls(state: state).padding(.top, 4) }
+                    HStack(spacing: 12) {
+                        TaskLabel(state: state, finished: finished)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        if !finished { FocusControls(state: state) }
+                    }
+                    .padding(.horizontal, 6)
+                    .padding(.top, 4)
                 }
             } compactLeading: {
                 FocusRing(state: state, finished: finished, lineWidth: 3)
@@ -57,25 +66,49 @@ struct FocusLiveActivity: Widget {
 
 // MARK: - Lock Screen
 
+/// Like the system Timer: what's running and the time on the left, the controls on the right, and the
+/// session's progress as a thin bar underneath.
 private struct LockScreenFocusView: View {
     let state: FocusActivityAttributes.ContentState
     let isStale: Bool
 
     var body: some View {
         let finished = state.isFinished || isStale
-        HStack(alignment: .center, spacing: 16) {
-            FocusRing(state: state, finished: finished)
-                .frame(width: 52, height: 52)
-            VStack(alignment: .leading, spacing: 4) {
-                Countdown(state: state, finished: finished)
-                    .font(.system(size: 34, weight: .light, design: .rounded))
-                TaskLabel(state: state, finished: finished, alignment: .leading)
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .center, spacing: 12) {
+                VStack(alignment: .leading, spacing: 2) {
+                    TaskLabel(state: state, finished: finished)
+                    Countdown(state: state, finished: finished, alignment: .leading)
+                        .font(.system(size: 44, weight: .light, design: .rounded))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                if !finished { FocusControls(state: state) }
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            if !finished { FocusControls(state: state, compact: true) }
+            if !finished { FocusBar(state: state) }
         }
-        .padding(16)
+        .padding(.horizontal, 20)
+        .padding(.vertical, 16)
         .foregroundStyle(.white)
+    }
+}
+
+/// Session progress as a thin line; runs down by itself while the timer runs.
+private struct FocusBar: View {
+    let state: FocusActivityAttributes.ContentState
+
+    var body: some View {
+        Group {
+            if let start = state.rangeStart, let end = state.endDate, end > .now {
+                ProgressView(timerInterval: start...end, countsDown: true) { EmptyView() } currentValueLabel: { EmptyView() }
+            } else {
+                ProgressView(value: state.duration > 0 ? Double(state.remaining) / Double(state.duration) : 0)
+            }
+        }
+        .progressViewStyle(.linear)
+        .tint(state.isRunning ? Color.accentColor : Color.white.opacity(0.5))
+        .labelsHidden()
     }
 }
 
@@ -115,6 +148,7 @@ private struct FocusRing: View {
 private struct Countdown: View {
     let state: FocusActivityAttributes.ContentState
     let finished: Bool
+    var alignment: TextAlignment = .trailing
 
     var body: some View {
         Group {
@@ -127,7 +161,8 @@ private struct Countdown: View {
             }
         }
         .monospacedDigit()
-        .multilineTextAlignment(.trailing)
+        // Timer text takes the width of its widest value; align it so it hugs its side.
+        .multilineTextAlignment(alignment)
         .foregroundStyle(finished ? Color.green : Color.white)
     }
 }
@@ -135,36 +170,33 @@ private struct Countdown: View {
 private struct TaskLabel: View {
     let state: FocusActivityAttributes.ContentState
     let finished: Bool
-    var alignment: TextAlignment = .center
-
     var body: some View {
         Group {
             if finished {
                 Text("Time’s up — great focus session!")
             } else if let task = state.task {
-                Text(task) + Text(state.openTasks > 1 ? "  +\(state.openTasks - 1)" : "").foregroundStyle(.secondary)
+                Text(state.isRunning ? task : "Paused · \(task)")
+                    + Text(state.openTasks > 1 ? "  +\(state.openTasks - 1)" : "").foregroundStyle(.white.opacity(0.4))
             } else {
                 Text(state.isRunning ? "Focusing" : "Paused")
             }
         }
         .font(.system(size: 15, weight: .medium))
-        .foregroundStyle(.white.opacity(0.85))
+        .foregroundStyle(.white.opacity(0.7))
         .lineLimit(1)
-        .multilineTextAlignment(alignment)
     }
 }
 
 /// Pause / resume and +5 min, run by the app through App Intents.
 private struct FocusControls: View {
     let state: FocusActivityAttributes.ContentState
-    var compact = false
 
     var body: some View {
-        HStack(spacing: compact ? 8 : 12) {
+        HStack(spacing: 10) {
             Button(intent: ExtendFocusIntent()) {
                 Text("+5")
                     .font(.system(size: 15, weight: .semibold, design: .rounded))
-                    .frame(width: 44, height: 44)
+                    .frame(width: 48, height: 48)
                     .background(Circle().fill(Color.white.opacity(0.15)))
             }
             .buttonStyle(.plain)
@@ -173,13 +205,12 @@ private struct FocusControls: View {
             Button(intent: ToggleFocusIntent()) {
                 Image(systemName: state.isRunning ? "pause.fill" : "play.fill")
                     .font(.system(size: 17, weight: .semibold))
-                    .frame(width: 44, height: 44)
+                    .frame(width: 48, height: 48)
                     .background(Circle().fill(Color.accentColor))
             }
             .buttonStyle(.plain)
             .accessibilityLabel(state.isRunning ? "Pause" : "Resume")
         }
         .foregroundStyle(.white)
-        .frame(maxWidth: compact ? nil : .infinity, alignment: compact ? .trailing : .center)
     }
 }
